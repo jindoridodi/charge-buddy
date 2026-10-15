@@ -30,7 +30,7 @@ npm test          # HTTP smoke tests; run npm run build first
 
 Add your backend endpoints using Next.js Route Handlers, for example `src/app/api/chargers/route.ts` for `/api/chargers`. No database or real authentication has been connected yet.
 
-Login, reservations, listings, favorites, and settings still use demo data and browser localStorage. Map tiles (OpenStreetMap) and Google Fonts need internet access. No Vite, TanStack routing, Lovable integration, or separate backend server is needed.
+Login, reservations, listings, favorites, and settings still use demo data and browser localStorage. Map tiles (OpenStreetMap) and Google Fonts need internet access.
 
 ## Original project notes
 
