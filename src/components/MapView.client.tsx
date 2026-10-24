@@ -13,8 +13,8 @@ export interface MapViewProps {
   markers: MapMarker[];
   activeId?: string | null;
   onSelect?: (id: string) => void;
-  route?: [number, number][];
-  center?: [number, number];
+  route?: [number, number][] | undefined;
+  center?: [number, number] | undefined;
   zoom?: number;
   className?: string;
 }

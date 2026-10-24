@@ -1,65 +1,35 @@
 "use client";
 
-import Link from "next/link";
-
-import { useState } from "react";
-import { Navigation } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Navigation, Route, Timer, Zap } from "lucide-react";
+import { MapView } from "@/components/MapView";
+import { PageHeader, Section, Field, NativeSelect } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
-import { PageHeader, Section, Field, NativeSelect } from "@/components/PageHeader";
-import { estimateCost, money } from "@/lib/data";
-import { useApp } from "@/lib/store";
+import type { Coordinates, PlannedTrip, PlanningVehicle, TripObjective } from "@/lib/trips/types";
+
+interface Place { id: string; label: string; location: Coordinates; }
+
+async function firstPlace(query: string) {
+  const response = await fetch(`/api/locations?q=${encodeURIComponent(query)}`);
+  const body = await response.json() as { places?: Place[]; error?: string };
+  if (!response.ok) throw new Error(body.error ?? "Could not find that location.");
+  if (!body.places?.[0]) throw new Error(`No U.S. location found for “${query}”.`);
+  return body.places[0];
+}
 
 export default function Page() {
-  const { vehicles, defaultVehicleId, allChargers } = useApp();
-  const [from, setFrom] = useState("Downtown San Jose");
-  const [to, setTo] = useState("Santa Cruz, CA");
-  const [miles, setMiles] = useState(35);
-  const [battery, setBattery] = useState(40);
-  const [vid, setVid] = useState(defaultVehicleId);
-  const [planned, setPlanned] = useState(false);
-  const v = vehicles.find((x) => x.id === vid) ?? vehicles[0];
-  const range = v ? (v.batteryKwh * battery) / 100 * v.efficiency : 0;
-  const needed = Math.max(0, miles * 1.15 - range);
-  const kwhNeeded = v ? Math.ceil(needed / v.efficiency) : 0;
-  const stops = allChargers
-    .filter((c) => c.status === "Available" && (!v || c.connector === v.connector || c.level === "DC Fast"))
-    .map((c) => ({ c, cost: estimateCost(c, Math.max(kwhNeeded, 10), v?.efficiency ?? 3.5) }))
-    .sort((a, b) => a.cost.total - b.cost.total)
-    .slice(0, 4);
-
-  return (
-    <div>
-      <PageHeader title="Route Planner" subtitle="See if you can make it — and where to top up cheaply before you go." />
-      <Section className="grid gap-6 lg:grid-cols-[360px_1fr]">
-        <div className="h-fit space-y-4 rounded-2xl border bg-card p-5">
-          <Field label="Starting point"><Input value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="Destination"><Input value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-          <Field label={`Trip distance: ${miles} mi`}><Slider min={5} max={300} step={5} value={[miles]} onValueChange={([x]) => setMiles(x ?? 35)} /></Field>
-          <Field label="Vehicle"><NativeSelect value={vid} onChange={(e) => setVid(e.target.value)}>{vehicles.map((x) => <option key={x.id} value={x.id}>{x.nickname}</option>)}</NativeSelect></Field>
-          <Field label={`Current battery: ${battery}%`}><Slider min={5} max={100} step={5} value={[battery]} onValueChange={([x]) => setBattery(x ?? 40)} /></Field>
-          <Button className="w-full" onClick={() => setPlanned(true)}><Navigation className="h-4 w-4" />Plan route</Button>
-        </div>
-        <div className="space-y-4">
-          {!planned ? (
-            <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">Enter your trip details and press Plan route.</div>
-          ) : (<>
-            <div className="rounded-2xl border bg-card p-5">
-              <p className="text-sm text-muted-foreground">{from} → {to}</p>
-              <p className="mt-1 text-2xl font-bold">{needed === 0 ? "You can make it without charging" : `Charge about ${kwhNeeded} kWh before you leave`}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Estimated range now: {Math.round(range)} mi · Trip with 15% buffer: {Math.round(miles * 1.15)} mi</p>
-            </div>
-            <h2 className="text-lg font-semibold">{needed === 0 ? "Optional top-up spots" : "Recommended charging stops"}</h2>
-            {stops.map(({ c, cost }) => (
-              <Link key={c.id} href={`/chargers/${encodeURIComponent(c.id)}`} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4 hover:border-primary">
-                <div><p className="font-semibold">{c.name}</p><p className="text-sm text-muted-foreground">{c.neighborhood} · {c.connector} · {c.powerKw} kW · {cost.distance.toFixed(1)} mi</p></div>
-                <span className="font-bold">{money(cost.total)}</span>
-              </Link>
-            ))}
-          </>)}
-        </div>
-      </Section>
-    </div>
-  );
+  const [from, setFrom] = useState("San Jose, CA"); const [to, setTo] = useState("Santa Cruz, CA");
+  const [vehicles, setVehicles] = useState<PlanningVehicle[]>([]); const [vehicleId, setVehicleId] = useState("");
+  const [battery, setBattery] = useState("70"); const [reserve, setReserve] = useState("10"); const [detour, setDetour] = useState("12");
+  const [objective, setObjective] = useState<TripObjective>("fastest"); const [trip, setTrip] = useState<PlannedTrip | null>(null);
+  const [places, setPlaces] = useState<{ origin: Place; destination: Place } | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false);
+  useEffect(() => { fetch("/api/vehicles/catalog").then(async (response) => response.json() as Promise<{ vehicles?: PlanningVehicle[] }>).then((body) => { const catalog = body.vehicles ?? []; setVehicles(catalog); setVehicleId(catalog[0]?.id ?? ""); }).catch(() => setError("Vehicle catalog is unavailable.")); }, []);
+  const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
+  const markers = useMemo(() => [...(places ? [{ id: "origin", ...places.origin.location, label: "Start" }, { id: "destination", ...places.destination.location, label: "End" }] : []), ...(trip?.stops.map((stop, index) => ({ id: stop.chargerId, ...stop.location, label: `${index + 1}` })) ?? [])], [places, trip]);
+  async function plan() {
+    setLoading(true); setError(null); setTrip(null);
+    try { const [origin, destination] = await Promise.all([firstPlace(from), firstPlace(to)]); setPlaces({ origin, destination }); const response = await fetch("/api/trips", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ origin: origin.location, destination: destination.location, vehicle: { catalogVehicleId: vehicleId }, startSocPercent: Number(battery), reserveSocPercent: Number(reserve), objective, maxDetourMiles: Number(detour) }) }); const body = await response.json() as PlannedTrip & { error?: string }; if (!response.ok) throw new Error(body.error ?? "Trip planning is unavailable."); setTrip(body); } catch (reason) { setError(reason instanceof Error ? reason.message : "Trip planning failed."); } finally { setLoading(false); }
+  }
+  return <div><PageHeader title="EV Trip Planner" subtitle="Plan a feasible U.S. drive with self-hosted routing and public charging data." /><Section className="grid gap-6 lg:grid-cols-[360px_1fr]"><div className="h-fit space-y-4 rounded-2xl border bg-card p-5"><Field label="Starting point" hint="U.S. addresses and place names use the self-hosted geocoder."><Input value={from} onChange={(event) => setFrom(event.target.value)} /></Field><Field label="Destination"><Input value={to} onChange={(event) => setTo(event.target.value)} /></Field><Field label="Planning vehicle" hint={selectedVehicle ? `${selectedVehicle.precision === "curated" ? "Curated" : "Custom"} profile · ${selectedVehicle.connector}` : undefined}><NativeSelect value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name}</option>)}</NativeSelect></Field><div className="grid grid-cols-2 gap-3"><Field label="Current charge"><Input type="number" min="5" max="100" value={battery} onChange={(event) => setBattery(event.target.value)} /><span className="text-xs text-muted-foreground">percent</span></Field><Field label="Battery reserve"><Input type="number" min="5" max="40" value={reserve} onChange={(event) => setReserve(event.target.value)} /><span className="text-xs text-muted-foreground">percent</span></Field></div><Field label="Route objective"><NativeSelect value={objective} onChange={(event) => setObjective(event.target.value as TripObjective)}><option value="fastest">Fastest feasible trip</option><option value="lowest_cost">Lowest estimated cost</option></NativeSelect></Field><Field label="Maximum charger detour"><Input type="number" min="1" max="50" value={detour} onChange={(event) => setDetour(event.target.value)} /><span className="text-xs text-muted-foreground">miles from the routed corridor</span></Field><Button className="w-full" onClick={plan} disabled={loading || !vehicleId}>{loading ? "Planning trip…" : <><Navigation className="h-4 w-4" />Plan route</>}</Button><p className="text-xs text-muted-foreground">Static estimates only: no live traffic, weather, price, or station-availability guarantee.</p></div><div className="space-y-4">{error && <div className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" /><span>{error}</span></div>}<div className="h-72 overflow-hidden rounded-2xl border bg-card sm:h-96"><MapView markers={markers} route={trip?.route.map((point) => [point.lat, point.lng])} center={places ? [places.origin.location.lat, places.origin.location.lng] : undefined} /></div>{!trip && !error && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">Enter a trip and choose Plan route to evaluate compatible charging stops.</div>}{trip?.outcome === "no_feasible_plan" && <div className="rounded-2xl border bg-card p-6"><h2 className="text-xl font-bold">No feasible plan found</h2><p className="mt-2 text-muted-foreground">No evaluated compatible charger sequence meets your battery reserve within the selected detour limit. Try a lower reserve, wider detour, or another vehicle.</p></div>}{trip?.outcome === "feasible" && <><div className="rounded-2xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-4"><div><p className="text-sm text-muted-foreground">{objective === "fastest" ? "Fastest feasible estimate" : "Lowest estimated-cost route"}</p><p className="mt-1 text-2xl font-bold">{trip.stops.length ? `${trip.stops.length} charging stop${trip.stops.length === 1 ? "" : "s"}` : "No charge needed"}</p></div><div className="flex gap-4 text-sm"><span><Route className="mr-1 inline h-4 w-4" />{trip.distanceMiles} mi</span><span><Timer className="mr-1 inline h-4 w-4" />{(trip.driveMinutes ?? 0) + (trip.chargeMinutes ?? 0)} min</span><span><Zap className="mr-1 inline h-4 w-4" />{trip.estimatedCost == null ? "Cost unknown" : `$${trip.estimatedCost.toFixed(2)}`}</span></div></div></div><div className="space-y-3"><h2 className="text-lg font-semibold">Charging plan</h2>{trip.stops.map((stop, index) => <div key={stop.chargerId} className="rounded-xl border bg-card p-4"><div className="flex flex-wrap justify-between gap-3"><div><p className="font-semibold">{index + 1}. {stop.chargerName}</p><p className="text-sm text-muted-foreground">{stop.source.toUpperCase()} data · arrive {stop.arrivalSocPercent}% → leave {stop.departureSocPercent}%</p></div><div className="text-right text-sm"><p className="font-semibold">Add {stop.energyAddedKwh} kWh · ~{stop.chargeMinutes} min</p><p className="text-muted-foreground">{stop.estimatedChargeCost == null ? "Price unknown" : `$${stop.estimatedChargeCost.toFixed(2)} charging`}</p></div></div></div>)}{!trip.stops.length && <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Your starting charge reaches the destination while retaining the selected reserve.</p>}</div><div className="rounded-xl border bg-muted/30 p-4 text-sm"><p className="font-semibold">Planning assumptions</p><ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">{[...trip.assumptions, ...trip.warnings].map((message) => <li key={message}>{message}</li>)}</ul>{trip.dataFreshness && <p className="mt-2 text-xs text-muted-foreground">Newest evaluated station source update: {new Date(trip.dataFreshness).toLocaleDateString()}.</p>}</div></>}</div></Section></div>;
 }

@@ -51,4 +51,4 @@ Main Features:
 3. Connect charging api's (if we can find any public ones lol)
 # Charge Buddy
 
-See [the project documentation](docs/README.md) and [Supabase/NREL setup](docs/SUPABASE_SETUP.md). Run `npm run import:nrel` after configuring `.env.local` to load the free nationwide public charger catalog.
+See [the project documentation](docs/README.md) and [Supabase/NREL setup](docs/SUPABASE_SETUP.md). Run `npm run import:nrel` after configuring `.env.local` to load the free nationwide public charger catalog. Self-hosted routing/geocoding setup is documented in [infra/README.md](infra/README.md).
