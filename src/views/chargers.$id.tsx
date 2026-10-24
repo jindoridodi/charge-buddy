@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart, MapPin, Star, Zap, Clock, Car, GitCompare, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,22 @@ import { Section, Field, NativeSelect } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/ChargerCard";
 import { estimateCost, money } from "@/lib/data";
 import { useApp } from "@/lib/store";
+import type { CatalogCharger, CommunityPriceReport } from "@/lib/catalog/types";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 
 export default function ChargerDetail() {
   const { id } = useParams<{ id: string }>();
   const app = useApp();
   const c = app.getCharger(id);
+  const [publicCharger, setPublicCharger] = useState<CatalogCharger | null>(null);
+  const [reports, setReports] = useState<CommunityPriceReport[]>([]);
+  const [reportPrice, setReportPrice] = useState("");
+  const [reportNote, setReportNote] = useState("");
+  const [observedAt, setObservedAt] = useState(new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    if (c) return;
+    fetch(`/api/chargers/${id}`).then(async (response) => { const body = await response.json(); if (response.ok) { setPublicCharger(body.charger); setReports(body.reports ?? []); } }).catch(() => undefined);
+  }, [c, id]);
   const [photo, setPhoto] = useState(0);
   const [date, setDate] = useState("2026-10-20");
   const [start, setStart] = useState("10:00");
@@ -28,6 +39,23 @@ export default function ChargerDetail() {
   const [payment, setPayment] = useState("Visa •••• 4242");
   const [confirmed, setConfirmed] = useState<string | null>(null);
 
+  const submitReport = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      const session = await getBrowserSupabase().auth.getSession();
+      const response = await fetch(`/api/chargers/${id}/price-reports`, { method: "POST", headers: { "Content-Type": "application/json", ...(session.data.session ? { Authorization: `Bearer ${session.data.session.access_token}` } : {}) }, body: JSON.stringify({ pricePerKwh: Number(reportPrice), observedAt, note: reportNote }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error);
+      setReports((old) => [body.report, ...old]); setReportPrice(""); setReportNote(""); toast.success("Price report is visible now and will affect rankings.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not submit report"); }
+  };
+  const flag = async (reportId: string) => {
+    try {
+      const session = await getBrowserSupabase().auth.getSession();
+      const response = await fetch(`/api/price-reports/${reportId}/flags`, { method: "POST", headers: { "Content-Type": "application/json", ...(session.data.session ? { Authorization: `Bearer ${session.data.session.access_token}` } : {}) }, body: JSON.stringify({ reason: "Price appears inaccurate" }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error); toast.success("Report flagged for review.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not flag report"); }
+  };
+  if (!c && publicCharger) return <Section><Link href="/chargers" className="text-sm text-muted-foreground hover:text-foreground">← All chargers</Link><div className="mt-4 grid gap-8 lg:grid-cols-[1fr_360px]"><div className="space-y-6"><div><h1 className="text-3xl font-bold">{publicCharger.name}</h1><p className="mt-2 text-muted-foreground">{publicCharger.address}, {[publicCharger.city, publicCharger.state, publicCharger.zip].filter(Boolean).join(", ")}</p></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Network", publicCharger.network || "Unknown"], ["Connectors", publicCharger.connector_types.join(", ") || "Unknown"], ["Status", publicCharger.operational_status || "Unknown"], ["Price", publicCharger.price_summary?.price_per_kwh != null ? `$${publicCharger.price_summary.price_per_kwh.toFixed(2)}/kWh` : "Price unknown"]].map(([k, v]) => <div key={k} className="rounded-xl border bg-card p-3"><p className="text-xs text-muted-foreground">{k}</p><p className="font-semibold">{v}</p></div>)}</div><div className="rounded-xl border bg-card p-4"><h2 className="font-semibold">Operator-reported price</h2><p className="mt-1 text-muted-foreground">{publicCharger.operator_pricing || "No operator price provided by NREL."}</p><p className="mt-2 text-xs text-muted-foreground">NREL source updated: {publicCharger.source_updated_at ? new Date(publicCharger.source_updated_at).toLocaleDateString() : "unknown"}; imported {new Date(publicCharger.imported_at).toLocaleDateString()}.</p></div><div><h2 className="mb-3 text-lg font-semibold">Community report history</h2><div className="space-y-2">{reports.map((r) => <div key={r.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><span className="font-semibold">${Number(r.price_per_kwh).toFixed(2)}/kWh · {r.observed_at}</span>{r.state === "needs_review" ? <span className="text-xs text-warning">Under review</span> : <Button size="sm" variant="ghost" onClick={() => flag(r.id)}>Flag</Button>}</div>{r.note && <p className="mt-1 text-sm text-muted-foreground">{r.note}</p>}</div>)}{!reports.length && <p className="text-sm text-muted-foreground">No community price reports yet.</p>}</div></div></div><aside className="h-fit rounded-2xl border bg-card p-5"><h2 className="text-lg font-semibold">Report price</h2><p className="mt-1 text-sm text-muted-foreground">USD per kWh only. Reports are visible immediately.</p><form onSubmit={submitReport} className="mt-4 space-y-3"><Field label="Price (USD/kWh)"><Input required min="0.01" max="9.99" step="0.001" type="number" value={reportPrice} onChange={(e) => setReportPrice(e.target.value)} /></Field><Field label="Observed date"><Input required type="date" value={observedAt} onChange={(e) => setObservedAt(e.target.value)} /></Field><Field label="Note (optional)"><Input maxLength={500} value={reportNote} onChange={(e) => setReportNote(e.target.value)} /></Field><Button className="w-full">Submit report</Button></form></aside></div></Section>;
   if (!c) {
     return (
       <Section>

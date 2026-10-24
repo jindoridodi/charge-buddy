@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/store";
 import { toast } from "sonner";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 
 const NAV = [
   { to: "/chargers", label: "Find Chargers" },
@@ -41,7 +42,8 @@ export function SiteHeader() {
   const navigate = useRouter();
   const pathname = usePathname();
 
-  const logout = () => {
+  const logout = async () => {
+    try { await getBrowserSupabase().auth.signOut(); } catch { /* local state is still cleared */ }
     set({ user: null });
     toast.success("Signed out");
     navigate.push("/");

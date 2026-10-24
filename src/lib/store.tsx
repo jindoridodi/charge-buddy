@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_VEHICLES,
-  MOCK_CHARGERS,
   MOCK_HOST_BOOKINGS,
   MOCK_RESERVATIONS,
   MY_LISTINGS,
@@ -47,7 +46,7 @@ interface State {
 const initial: State = {
   user: null,
   role: "driver",
-  favorites: ["c1", "c7"],
+  favorites: [],
   vehicles: DEFAULT_VEHICLES,
   defaultVehicleId: "v1",
   reservations: MOCK_RESERVATIONS,
@@ -99,14 +98,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const value = useMemo<Ctx>(() => {
-    const allChargers = [...MOCK_CHARGERS, ...state.listings.filter((l) => !l.disabled)];
+    // Public chargers come from the Supabase/NREL catalog. Local state only owns peer listings and UI selections.
+    const allChargers = state.listings.filter((l) => !l.disabled);
     const set: Ctx["set"] = (patch) =>
       setState((s) => ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) }));
     return {
       ...state,
       set,
       allChargers,
-      getCharger: (id) => [...MOCK_CHARGERS, ...state.listings].find((c) => c.id === id),
+      getCharger: (id) => state.listings.find((c) => c.id === id),
       defaultVehicle: state.vehicles.find((v) => v.id === state.defaultVehicleId) ?? state.vehicles[0],
       toggleFavorite: (id) =>
         set((s) => ({

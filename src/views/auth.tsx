@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/PageHeader";
 import { useApp } from "@/lib/store";
 import { toast } from "sonner";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 
 function Password({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const [show, setShow] = useState(false);
@@ -39,16 +40,21 @@ export default function AuthPage() {
     navigate.push("/dashboard");
   };
 
-  const login = (e: React.FormEvent) => {
+  const login = async (e: React.FormEvent) => {
     e.preventDefault();
     const er: Record<string, string> = {};
     if (!emailOk(f.email)) er["email"] = "Enter a valid email";
     if (f.password.length < 6) er["password"] = "Password must be at least 6 characters";
     setErrors(er);
-    if (!Object.keys(er).length) finish((f.email.split("@")[0] ?? "").replace(/^\w/, (c) => c.toUpperCase()), "both");
+    if (Object.keys(er).length) return;
+    try {
+      const { data, error } = await getBrowserSupabase().auth.signInWithPassword({ email: f.email, password: f.password });
+      if (error) throw error;
+      finish(data.user.user_metadata["full_name"] || (f.email.split("@")[0] ?? "Member"), "both");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not sign in"); }
   };
 
-  const signup = (e: React.FormEvent) => {
+  const signup = async (e: React.FormEvent) => {
     e.preventDefault();
     const er: Record<string, string> = {};
     if (f.name.trim().length < 2) er["name"] = "Enter your full name";
@@ -56,7 +62,13 @@ export default function AuthPage() {
     if (f.password.length < 6) er["password"] = "At least 6 characters";
     if (f.confirm !== f.password) er["confirm"] = "Passwords don't match";
     setErrors(er);
-    if (!Object.keys(er).length) finish(f.name.trim(), f.purpose);
+    if (Object.keys(er).length) return;
+    try {
+      const { data, error } = await getBrowserSupabase().auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.name.trim(), purpose: f.purpose } } });
+      if (error) throw error;
+      if (data.session) finish(f.name.trim(), f.purpose);
+      else toast.success("Check your email to confirm your account, then log in.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not create account"); }
   };
 
   const Err = ({ k }: { k: string }) => (errors[k] ? <p className="text-xs text-destructive">{errors[k]}</p> : null);
@@ -69,8 +81,9 @@ export default function AuthPage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (!emailOk(f.email)) return setErrors({ email: "Enter a valid email" });
-              toast.success("Reset link sent (simulated)");
-              setMode("login");
+              getBrowserSupabase().auth.resetPasswordForEmail(f.email, { redirectTo: `${window.location.origin}/auth` }).then(({ error }) => {
+                if (error) toast.error(error.message); else { toast.success("Reset link sent"); setMode("login"); }
+              }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not send reset link"));
             }}
             className="space-y-4"
           >
@@ -123,7 +136,7 @@ export default function AuthPage() {
             </TabsContent>
           </Tabs>
         )}
-        <p className="mt-6 text-center text-xs text-muted-foreground">Demo only — no real account is created.</p>
+        <p className="mt-6 text-center text-xs text-muted-foreground">Accounts use Supabase email/password authentication.</p>
       </div>
     </div>
   );

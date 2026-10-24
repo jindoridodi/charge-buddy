@@ -2,6 +2,10 @@
 
 Next.js App Router + React + TypeScript, with the UI from `design-compose-kit-main`.
 
+## Team documentation
+
+Start with the [team guide](docs/README.md) for the current codebase, proposal requirements, architecture, two-person delivery plan, SDLC, and testing checklist. Use the [step-by-step completion guide](docs/IMPLEMENTATION_STEPS.md) to work through the remaining implementation.
+
 ## Run locally
 
 Use Node.js 22.12+ (or 24+) and npm.
@@ -45,3 +49,6 @@ Main Features:
 1. Map + Routing
 2. Calculate which charger is the cheapest in a radius + calculate cost
 3. Connect charging api's (if we can find any public ones lol)
+# Charge Buddy
+
+See [the project documentation](docs/README.md) and [Supabase/NREL setup](docs/SUPABASE_SETUP.md). Run `npm run import:nrel` after configuring `.env.local` to load the free nationwide public charger catalog.

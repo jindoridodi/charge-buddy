@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GitCompare, Search, SlidersHorizontal, Map as MapIcon, List } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ import { MapView } from "@/components/MapView";
 import { NativeSelect } from "@/components/PageHeader";
 import { CONNECTORS, LEVELS, estimateCost } from "@/lib/data";
 import { useApp } from "@/lib/store";
+import type { CatalogCharger } from "@/lib/catalog/types";
+import { CatalogChargerCard } from "@/components/CatalogChargerCard";
 
 
 const SORTS = {
@@ -24,6 +26,8 @@ const SORTS = {
 
 export default function FindChargers({ q = "" }: { q?: string }) {
   const { allChargers, defaultVehicle, compare, settings } = useApp();
+  const [catalog, setCatalog] = useState<CatalogCharger[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [query, setQuery] = useState(q ?? "");
   const [radius, setRadius] = useState(settings.maxDistance);
   const [connectors, setConnectors] = useState<string[]>(settings.connectors);
@@ -37,6 +41,14 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   const [mobileMap, setMobileMap] = useState(false);
   const eff = defaultVehicle?.efficiency ?? 3.5;
   const kwh = 30;
+
+  useEffect(() => {
+    const params = new URLSearchParams({ limit: "100", ...(query.trim() ? { q: query.trim() } : {}), ...(sort === "price" || sort === "total" ? { sort } : {}) });
+    const timer = window.setTimeout(() => fetch(`/api/chargers?${params}`).then(async (response) => {
+      const body = await response.json(); if (!response.ok) throw new Error(body.error); setCatalog(body.chargers ?? []); setCatalogError(null);
+    }).catch((error: unknown) => setCatalogError(error instanceof Error ? error.message : "Could not load public catalog")), 250);
+    return () => window.clearTimeout(timer);
+  }, [query, sort]);
 
   const results = useMemo(() => {
     const ql = query.toLowerCase().trim();
@@ -66,7 +78,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   }, [allChargers, query, radius, connectors, levels, maxPrice, minPower, time, sort, eff]);
 
   const bestId = [...results].sort((a, b) => a.cost.total - b.cost.total)[0]?.c.id;
-  const markers = useMemo(() => results.map(({ c }) => ({ id: c.id, lat: c.lat, lng: c.lng, label: `$${c.pricePerKwh.toFixed(2)}`, mine: !!c.ownedByMe })), [results]);
+  const markers = useMemo(() => [...catalog.map((c) => ({ id: c.id, lat: c.latitude, lng: c.longitude, label: c.price_summary?.price_per_kwh != null ? `$${c.price_summary.price_per_kwh.toFixed(2)}` : "?" })), ...results.map(({ c }) => ({ id: c.id, lat: c.lat, lng: c.lng, label: `$${c.pricePerKwh.toFixed(2)}`, mine: true }))], [catalog, results]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const select = (id: string) => {
@@ -136,14 +148,15 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div className={`w-full overflow-y-auto p-4 lg:w-[52%] ${mobileMap ? "hidden lg:block" : ""}`}>
-          <p className="mb-3 text-sm text-muted-foreground">{results.length} chargers · estimates for {kwh} kWh with {defaultVehicle?.nickname ?? "average EV"}</p>
+          <p className="mb-3 text-sm text-muted-foreground">{catalog.length + results.length} chargers · public catalog uses community prices for rankings</p>
           <div className="space-y-3">
+            {catalog.map((c) => <CatalogChargerCard key={c.id} charger={c} active={active === c.id} onHover={setActive} />)}
             {results.map(({ c }) => (
               <div key={c.id} onClick={() => setActive(c.id)}>
                 <ChargerCard charger={c} active={active === c.id} onHover={setActive} kwh={kwh} bestValue={c.id === bestId} />
               </div>
             ))}
-            {!results.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">No chargers match these filters.</div>}
+            {!results.length && !catalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{catalogError ?? "No chargers match these filters. Import the NREL catalog to begin."}</div>}
           </div>
         </div>
         <div className={`flex-1 ${mobileMap ? "block" : "hidden lg:block"}`}>
