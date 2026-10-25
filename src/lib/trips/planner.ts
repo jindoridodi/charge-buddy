@@ -20,7 +20,7 @@ function chargeMinutes(vehicle: PlanningVehicle, chargerKw: number, fromSoc: num
   const curve = [...vehicle.chargeCurve].sort((a, b) => a.socPercent - b.socPercent);
   let minutes = 0;
   for (let soc = fromSoc; soc < toSoc;) {
-    const next = Math.min(toSoc, Math.ceil(soc / 5) * 5 || 5);
+    const next = Math.min(toSoc, (Math.floor(soc / 5) + 1) * 5);
     const point = [...curve].reverse().find((entry) => entry.socPercent <= soc) ?? curve[0]!;
     const power = Math.max(1, Math.min(vehicle.maxDcKw, chargerKw, point.powerKw));
     minutes += ((next - soc) / 100 * vehicle.usableBatteryKwh / power) * 60;

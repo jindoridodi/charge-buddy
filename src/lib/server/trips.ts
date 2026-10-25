@@ -25,7 +25,14 @@ function distanceToRouteMiles(point: Coordinates, route: Coordinates[]) {
 }
 
 function mileAlong(point: Coordinates, route: Coordinates[], totalMiles: number) {
-  let best = { distance: Infinity, fraction: 0 };
+  const segments = route.slice(1).map((b, index) => {
+    const a = route[index]!;
+    return Math.hypot((b.lng - a.lng) * milesPerDegreeLongitude, (b.lat - a.lat) * milesPerDegreeLatitude);
+  });
+  const routeShapeMiles = segments.reduce((sum, distance) => sum + distance, 0);
+  if (!routeShapeMiles) return 0;
+  let best = { distance: Infinity, miles: 0 };
+  let milesBefore = 0;
   for (let i = 1; i < route.length; i++) {
     const a = route[i - 1]!; const b = route[i]!;
     const px = point.lng * milesPerDegreeLongitude; const py = point.lat * milesPerDegreeLatitude;
@@ -33,16 +40,17 @@ function mileAlong(point: Coordinates, route: Coordinates[], totalMiles: number)
     const bx = b.lng * milesPerDegreeLongitude; const by = b.lat * milesPerDegreeLatitude;
     const dx = bx - ax; const dy = by - ay; const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
     const distance = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-    if (distance < best.distance) best = { distance, fraction: (i - 1 + t) / (route.length - 1) };
+    if (distance < best.distance) best = { distance, miles: milesBefore + t * segments[i - 1]! };
+    milesBefore += segments[i - 1]!;
   }
-  return best.fraction * totalMiles;
+  return best.miles / routeShapeMiles * totalMiles;
 }
 
 async function corridorCandidates(request: NextRequest, route: Coordinates[], routeMiles: number, maxDetourMiles: number): Promise<CorridorCandidate[]> {
   const lats = route.map((point) => point.lat); const lngs = route.map((point) => point.lng);
   const latPadding = maxDetourMiles / milesPerDegreeLatitude; const lngPadding = maxDetourMiles / milesPerDegreeLongitude;
   const supabase = supabaseForRequest(request);
-  const { data, error } = await supabase.from("chargers").select("*").gte("latitude", Math.min(...lats) - latPadding).lte("latitude", Math.max(...lats) + latPadding).gte("longitude", Math.min(...lngs) - lngPadding).lte("longitude", Math.max(...lngs) + lngPadding).limit(500);
+  const { data, error } = await supabase.from("chargers").select("*").eq("public_access", true).gte("latitude", Math.min(...lats) - latPadding).lte("latitude", Math.max(...lats) + latPadding).gte("longitude", Math.min(...lngs) - lngPadding).lte("longitude", Math.max(...lngs) + lngPadding).limit(500);
   if (error) throw error;
   const chargers = (data ?? []) as CatalogCharger[];
   const ids = chargers.map((charger) => charger.id);
@@ -53,7 +61,7 @@ async function corridorCandidates(request: NextRequest, route: Coordinates[], ro
     const location = { lat: charger.latitude, lng: charger.longitude };
     const detourMiles = distanceToRouteMiles(location, route);
     const price = priceSummary(grouped.get(charger.id) ?? []).price_per_kwh;
-    return { id: charger.id, name: charger.name, location, connectorTypes: charger.connector_types, powerKw: charger.power_kw == null ? null : Number(charger.power_kw), pricePerKwh: price, source: "nrel" as const, sourceUpdatedAt: charger.source_updated_at, availability: charger.operational_status === "E" ? "available" as const : "unknown" as const, publicAccess: true, detourMiles, mileAlong: mileAlong(location, route, routeMiles) };
+    return { id: charger.id, name: charger.name, location, connectorTypes: charger.connector_types, powerKw: charger.power_kw == null ? null : Number(charger.power_kw), pricePerKwh: price, source: charger.source, sourceUpdatedAt: charger.source_updated_at, availability: charger.availability_status, publicAccess: charger.public_access, detourMiles, mileAlong: mileAlong(location, route, routeMiles) };
   }).filter((charger) => charger.detourMiles <= maxDetourMiles);
 }
 

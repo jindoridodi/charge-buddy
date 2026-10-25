@@ -13,7 +13,7 @@ export interface CommunityPriceReport {
 
 export interface CatalogCharger {
   id: string;
-  nrel_station_id: number;
+  nrel_station_id: number | null;
   name: string;
   address: string;
   city: string | null;
@@ -28,6 +28,13 @@ export interface CatalogCharger {
   operator_pricing: string | null;
   source_updated_at: string | null;
   imported_at: string;
+  source: "nrel" | "peer";
+  source_external_id: string | null;
+  public_access: boolean;
+  availability_status: "available" | "unknown" | "unavailable";
+  opening_hours_confidence: "verified" | "reported" | "unknown";
+  community_price_per_kwh?: number | null;
+  community_price_observed_at?: string | null;
   price_summary?: PriceSummary;
 }
 

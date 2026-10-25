@@ -70,6 +70,7 @@
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "supabase": "^2.122.0",
     "tsx": "^4.23.15",
     "typescript": "^5.8.3"
   }

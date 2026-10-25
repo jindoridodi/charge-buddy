@@ -18,14 +18,14 @@ test("returns a direct plan when range preserves reserve", () => {
 });
 
 test("creates a reachable charge stop and respects the reserve", () => {
-  const plan = planChargingStops({ vehicle, startSocPercent: 50, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates: [charger("midpoint", 90, 0.35)] });
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates: [charger("midpoint", 90, 0.35)] });
   assert.ok(plan); assert.equal(plan?.stops[0]?.chargerId, "midpoint"); assert.ok((plan?.stops[0]?.departureSocPercent ?? 0) > (plan?.stops[0]?.arrivalSocPercent ?? 100));
 });
 
 test("lowest-cost mode excludes unknown pricing while fastest mode may use it", () => {
   const candidates = [charger("unknown", 80, null, 150), charger("priced", 80, 0.5, 50)];
-  const fastest = planChargingStops({ vehicle, startSocPercent: 50, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates });
-  const cheapest = planChargingStops({ vehicle, startSocPercent: 50, reserveSocPercent: 10, objective: "lowest_cost", routeMiles: 180, candidates });
+  const fastest = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates });
+  const cheapest = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "lowest_cost", routeMiles: 180, candidates });
   assert.equal(fastest?.stops[0]?.chargerId, "unknown"); assert.equal(cheapest?.stops[0]?.chargerId, "priced");
 });
 

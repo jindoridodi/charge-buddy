@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { requireUser } from "@/lib/supabase/server";
 
-const schema = z.object({ pricePerKwh: z.number().positive().max(10), observedAt: z.string().date(), note: z.string().max(500).optional() });
+const schema = z.object({ pricePerKwh: z.number().positive().lt(10), observedAt: z.string().date(), note: z.string().max(500).optional() });
 
 export async function POST(request: Request, context: RouteContext<"/api/chargers/[id]/price-reports">) {
   try {

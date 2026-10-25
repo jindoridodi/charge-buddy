@@ -1,9 +1,21 @@
 import { NextRequest } from "next/server";
-import { priceSummary, orderByPrice } from "@/lib/catalog/price";
-import type { CatalogCharger, CommunityPriceReport } from "@/lib/catalog/types";
+import type { CatalogCharger, PriceSummary } from "@/lib/catalog/types";
 import { supabaseForRequest } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+function escapedSearch(value: string) {
+  return value
+    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+    .trim()
+    .replace(/[\\%_*]/g, "\\$&");
+}
+
+function catalogPriceSummary(charger: CatalogCharger): PriceSummary {
+  return charger.community_price_per_kwh != null && charger.community_price_observed_at != null
+    ? { status: "community", price_per_kwh: Number(charger.community_price_per_kwh), observed_at: charger.community_price_observed_at }
+    : { status: "unknown", price_per_kwh: null, observed_at: null };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,22 +24,17 @@ export async function GET(request: NextRequest) {
     const page = Math.max(Number(searchParams.get("page") ?? 1), 1);
     const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 30), 1), 100);
     const query = searchParams.get("q")?.trim();
-    let catalog = supabase.from("chargers").select("*", { count: "exact" }).order("name").range((page - 1) * limit, page * limit - 1);
-    if (query) catalog = catalog.or(`name.ilike.%${query}%,address.ilike.%${query}%,city.ilike.%${query}%,state.ilike.%${query}%,zip.ilike.%${query}%`);
-    const { data, error, count } = await catalog;
+    const safeQuery = query ? escapedSearch(query) : "";
+    let catalog = supabase.from("catalog_charger_prices").select("*", { count: "exact" }).eq("public_access", true);
+    if (safeQuery) catalog = catalog.or(`name.ilike.*${safeQuery}*,address.ilike.*${safeQuery}*,city.ilike.*${safeQuery}*,state.ilike.*${safeQuery}*,zip.ilike.*${safeQuery}*`);
+    const sort = searchParams.get("sort");
+    catalog = sort === "price"
+      ? catalog.order("community_price_per_kwh", { ascending: true, nullsFirst: false }).order("name")
+      : catalog.order("name");
+    const { data, error, count } = await catalog.range((page - 1) * limit, page * limit - 1);
     if (error) throw error;
     const chargers = (data ?? []) as CatalogCharger[];
-    const ids = chargers.map((c) => c.id);
-    const { data: reports, error: reportError } = ids.length
-      ? await supabase.from("community_price_reports").select("*").in("charger_id", ids).in("state", ["visible", "needs_review"])
-      : { data: [], error: null };
-    if (reportError) throw reportError;
-    const grouped = new Map<string, CommunityPriceReport[]>();
-    for (const report of (reports ?? []) as CommunityPriceReport[]) grouped.set(report.charger_id, [...(grouped.get(report.charger_id) ?? []), report]);
-    const result = chargers.map((charger) => ({ ...charger, price_summary: priceSummary(grouped.get(charger.id) ?? []) }));
-    const sort = searchParams.get("sort");
-    const ordered = sort === "price" || sort === "total" ? orderByPrice(result) : result;
-    return Response.json({ chargers: ordered, page, limit, total: count ?? 0 });
+    return Response.json({ chargers: chargers.map((charger) => ({ ...charger, price_summary: catalogPriceSummary(charger) })), page, limit, total: count ?? 0 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not load catalog" }, { status: 500 });
   }

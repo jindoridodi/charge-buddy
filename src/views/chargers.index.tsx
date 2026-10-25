@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { ChargerCard } from "@/components/ChargerCard";
 import { MapView } from "@/components/MapView";
 import { NativeSelect } from "@/components/PageHeader";
-import { CONNECTORS, LEVELS, estimateCost } from "@/lib/data";
+import { CONNECTORS, LEVELS, distanceMiles, estimateCost, USER_LOC } from "@/lib/data";
 import { useApp } from "@/lib/store";
 import type { CatalogCharger } from "@/lib/catalog/types";
 import { CatalogChargerCard } from "@/components/CatalogChargerCard";
@@ -19,7 +19,6 @@ import { CatalogChargerCard } from "@/components/CatalogChargerCard";
 const SORTS = {
   recommended: "Recommended / Best Value",
   price: "Lowest electricity price",
-  total: "Lowest estimated total cost",
   distance: "Closest distance",
   rating: "Highest rated",
 } as const;
@@ -43,12 +42,26 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   const kwh = 30;
 
   useEffect(() => {
-    const params = new URLSearchParams({ limit: "100", ...(query.trim() ? { q: query.trim() } : {}), ...(sort === "price" || sort === "total" ? { sort } : {}) });
+    const params = new URLSearchParams({ limit: "100", ...(query.trim() ? { q: query.trim() } : {}), ...(sort === "price" ? { sort } : {}) });
     const timer = window.setTimeout(() => fetch(`/api/chargers?${params}`).then(async (response) => {
       const body = await response.json(); if (!response.ok) throw new Error(body.error); setCatalog(body.chargers ?? []); setCatalogError(null);
     }).catch((error: unknown) => setCatalogError(error instanceof Error ? error.message : "Could not load public catalog")), 250);
     return () => window.clearTimeout(timer);
   }, [query, sort]);
+
+  const filteredCatalog = useMemo(() => catalog.filter((charger) => {
+    const price = charger.price_summary?.price_per_kwh;
+    const chargerConnectors = charger.connector_types.map((connector) => connector === "J1772COMBO" ? "CCS" : connector);
+    const power = charger.power_kw == null ? 0 : Number(charger.power_kw);
+    const level = power <= 2 ? "Level 1" : power < 20 ? "Level 2" : "DC Fast";
+    if (distanceMiles(USER_LOC, { lat: charger.latitude, lng: charger.longitude }) > radius) return false;
+    if (connectors.length && !chargerConnectors.some((connector) => connectors.includes(connector))) return false;
+    if (levels.length && !levels.includes(level)) return false;
+    if (price != null && price > maxPrice) return false;
+    if (power < minPower) return false;
+    if (time === "now" && charger.availability_status === "unavailable") return false;
+    return true;
+  }), [catalog, radius, connectors, levels, maxPrice, minPower, time]);
 
   const results = useMemo(() => {
     const ql = query.toLowerCase().trim();
@@ -69,7 +82,6 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     const score = (x: (typeof list)[number]) => x.cost.total - x.c.rating * 1.5;
     list.sort((a, b) =>
       sort === "price" ? a.c.pricePerKwh - b.c.pricePerKwh
-      : sort === "total" ? a.cost.total - b.cost.total
       : sort === "distance" ? a.cost.distance - b.cost.distance
       : sort === "rating" ? b.c.rating - a.c.rating
       : score(a) - score(b),
@@ -78,7 +90,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   }, [allChargers, query, radius, connectors, levels, maxPrice, minPower, time, sort, eff]);
 
   const bestId = [...results].sort((a, b) => a.cost.total - b.cost.total)[0]?.c.id;
-  const markers = useMemo(() => [...catalog.map((c) => ({ id: c.id, lat: c.latitude, lng: c.longitude, label: c.price_summary?.price_per_kwh != null ? `$${c.price_summary.price_per_kwh.toFixed(2)}` : "?" })), ...results.map(({ c }) => ({ id: c.id, lat: c.lat, lng: c.lng, label: `$${c.pricePerKwh.toFixed(2)}`, mine: true }))], [catalog, results]);
+  const markers = useMemo(() => [...filteredCatalog.map((c) => ({ id: c.id, lat: c.latitude, lng: c.longitude, label: c.price_summary?.price_per_kwh != null ? `$${c.price_summary.price_per_kwh.toFixed(2)}` : "?" })), ...results.map(({ c }) => ({ id: c.id, lat: c.lat, lng: c.lng, label: `$${c.pricePerKwh.toFixed(2)}`, mine: true }))], [filteredCatalog, results]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const select = (id: string) => {
@@ -148,15 +160,15 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div className={`w-full overflow-y-auto p-4 lg:w-[52%] ${mobileMap ? "hidden lg:block" : ""}`}>
-          <p className="mb-3 text-sm text-muted-foreground">{catalog.length + results.length} chargers · public catalog uses community prices for rankings</p>
+          <p className="mb-3 text-sm text-muted-foreground">{filteredCatalog.length + results.length} chargers · public catalog uses community prices for rankings</p>
           <div className="space-y-3">
-            {catalog.map((c) => <CatalogChargerCard key={c.id} charger={c} active={active === c.id} onHover={setActive} />)}
+            {filteredCatalog.map((c) => <CatalogChargerCard key={c.id} charger={c} active={active === c.id} onHover={setActive} />)}
             {results.map(({ c }) => (
               <div key={c.id} onClick={() => setActive(c.id)}>
                 <ChargerCard charger={c} active={active === c.id} onHover={setActive} kwh={kwh} bestValue={c.id === bestId} />
               </div>
             ))}
-            {!results.length && !catalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{catalogError ?? "No chargers match these filters. Import the NREL catalog to begin."}</div>}
+            {!results.length && !filteredCatalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{catalogError ?? "No chargers match these filters. Import the NREL catalog to begin."}</div>}
           </div>
         </div>
         <div className={`flex-1 ${mobileMap ? "block" : "hidden lg:block"}`}>

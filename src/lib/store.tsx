@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_VEHICLES,
+  MOCK_CHARGERS,
   MOCK_HOST_BOOKINGS,
   MOCK_RESERVATIONS,
   MY_LISTINGS,
@@ -106,7 +107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...state,
       set,
       allChargers,
-      getCharger: (id) => state.listings.find((c) => c.id === id),
+      getCharger: (id) => state.listings.find((c) => c.id === id) ?? MOCK_CHARGERS.find((c) => c.id === id),
       defaultVehicle: state.vehicles.find((v) => v.id === state.defaultVehicleId) ?? state.vehicles[0],
       toggleFavorite: (id) =>
         set((s) => ({

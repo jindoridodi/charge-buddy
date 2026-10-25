@@ -17,9 +17,13 @@ function normalize(station) {
     nrel_station_id: station.id, name: station.station_name.trim(), address: station.street_address?.trim() || "Address unavailable",
     city: station.city?.trim() || null, state: station.state?.trim() || null, zip: station.zip?.trim() || null,
     latitude: station.latitude, longitude: station.longitude, network: station.ev_network?.trim() || null,
-    connector_types: station.ev_connector_types ?? [], power_kw: null, operational_status: station.status_code ?? null,
+    connector_types: station.ev_connector_types ?? [],
+    power_kw: station.ev_dc_fast_num ? 50 : station.ev_level2_evse_num ? 7.2 : station.ev_level1_evse_num ? 1.4 : null,
+    operational_status: station.status_code ?? null,
     operator_pricing: station.ev_pricing?.trim() || null, source_updated_at: station.updated_at || station.open_date || null,
     imported_at: new Date().toISOString(),
+    source: "nrel", source_external_id: String(station.id), public_access: true,
+    availability_status: station.status_code === "E" ? "available" : "unknown", opening_hours_confidence: "unknown",
   };
 }
 

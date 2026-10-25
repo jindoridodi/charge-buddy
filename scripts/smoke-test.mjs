@@ -40,7 +40,7 @@ try {
   await check("/auth", "Supabase email/password");
   await check("/chargers", "Recommended / Best Value");
   await check("/chargers?q=Willow", "Recommended / Best Value");
-  await check("/chargers/c1", "Charger not found");
+  await check("/chargers/c1", "Willow Glen Garage Charger");
   await check("/compare", "Compare Chargers");
   await check("/dashboard", "Welcome back");
   await check("/list-charger", "Turn your home charger into extra income");

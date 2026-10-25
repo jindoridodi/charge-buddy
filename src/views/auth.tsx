@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -29,10 +29,23 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 export default function AuthPage() {
   const { set } = useApp();
   const navigate = useRouter();
-  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">("login");
   const [f, setF] = useState({ name: "", email: "", password: "", confirm: "", purpose: "driver" as "driver" | "host" | "both" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const up = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v });
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const { data: { subscription } } = getBrowserSupabase().auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") setMode("reset");
+      });
+      unsubscribe = () => subscription.unsubscribe();
+    } catch {
+      // The page remains usable in demo mode until an auth action is requested.
+    }
+    return () => unsubscribe?.();
+  }, []);
 
   const finish = (name: string, purpose: typeof f.purpose) => {
     set({ user: { name, email: f.email, phone: "(408) 555-0142", purpose }, role: purpose === "host" ? "host" : "driver" });
@@ -50,7 +63,8 @@ export default function AuthPage() {
     try {
       const { data, error } = await getBrowserSupabase().auth.signInWithPassword({ email: f.email, password: f.password });
       if (error) throw error;
-      finish(data.user.user_metadata["full_name"] || (f.email.split("@")[0] ?? "Member"), "both");
+      const purpose = data.user.user_metadata["purpose"];
+      finish(data.user.user_metadata["full_name"] || (f.email.split("@")[0] ?? "Member"), purpose === "host" || purpose === "both" ? purpose : "driver");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Could not sign in"); }
   };
 
@@ -76,7 +90,26 @@ export default function AuthPage() {
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="rounded-3xl border bg-card p-8 shadow-card">
-        {mode === "forgot" ? (
+        {mode === "reset" ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (f.password.length < 6) return setErrors({ password: "Password must be at least 6 characters" });
+              if (f.confirm !== f.password) return setErrors({ confirm: "Passwords don't match" });
+              getBrowserSupabase().auth.updateUser({ password: f.password }).then(({ error }) => {
+                if (error) toast.error(error.message); else { toast.success("Password updated. Please sign in."); setMode("login"); setF({ ...f, password: "", confirm: "" }); }
+              }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not update password"));
+            }}
+            className="space-y-4"
+          >
+            <h1 className="text-2xl font-bold">Choose a new password</h1>
+            <Field label="New password"><Password value={f.password} onChange={up("password")} /></Field>
+            <Err k="password" />
+            <Field label="Confirm password"><Password value={f.confirm} onChange={up("confirm")} /></Field>
+            <Err k="confirm" />
+            <Button className="w-full">Update password</Button>
+          </form>
+        ) : mode === "forgot" ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
