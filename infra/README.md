@@ -1,6 +1,37 @@
 # Self-hosted routing services
 
-ChargeBuddy keeps map/routing credentials server-side. Deploy Valhalla and Nominatim on a dedicated VM behind a private network or reverse proxy; only the Next.js server needs access to them.
+ChargeBuddy includes a Docker Compose stack for Valhalla and Nominatim. Both APIs bind to `127.0.0.1` by default, so they are available to the application server on the VM but are not public internet services.
+
+## Start the stack
+
+On the routing VM, install Docker plus the Compose plugin, then:
+
+```bash
+cd /srv/chargebuddy
+cp /path/to/charge-buddy/infra/docker-compose.yml .
+cp /path/to/charge-buddy/infra/.env.example .env
+# Edit .env: set a long NOMINATIM_PASSWORD and choose an OSM extract.
+docker compose --env-file .env up -d
+docker compose logs -f valhalla nominatim
+```
+
+The first boot downloads the chosen OSM PBF and imports/builds data. Do not restart or delete the named volumes while that work is running. Start with the California URL in `.env.example`; replacing it with the U.S. extract is a new, much larger import and needs VM capacity planning.
+
+## Validate and connect ChargeBuddy
+
+```bash
+curl -fsS http://127.0.0.1:8002/status
+curl -fsS "http://127.0.0.1:8080/search?format=jsonv2&q=San%20Jose%2C%20CA"
+```
+
+When ChargeBuddy runs on the same VM, set its server-only `.env.local` values to:
+
+```env
+VALHALLA_URL=http://127.0.0.1:8002
+NOMINATIM_URL=http://127.0.0.1:8080
+```
+
+If ChargeBuddy runs on another host, preserve the loopback binding and connect the hosts with a private VPC/VPN plus an authenticated reverse proxy. Never expose either port directly to the public internet.
 
 ## Required service contracts
 
