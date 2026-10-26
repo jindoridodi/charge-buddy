@@ -7,10 +7,9 @@ import { GitCompare, Search, SlidersHorizontal, Map as MapIcon, List } from "luc
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ChargerCard } from "@/components/ChargerCard";
 import { MapView } from "@/components/MapView";
 import { NativeSelect } from "@/components/PageHeader";
-import { CONNECTORS, LEVELS, distanceMiles, estimateCost, USER_LOC } from "@/lib/data";
+import { CONNECTORS, LEVELS, distanceMiles, USER_LOC } from "@/lib/data";
 import { useApp } from "@/lib/store";
 import type { CatalogCharger } from "@/lib/catalog/types";
 import { CatalogChargerCard } from "@/components/CatalogChargerCard";
@@ -24,7 +23,7 @@ const SORTS = {
 } as const;
 
 export default function FindChargers({ q = "" }: { q?: string }) {
-  const { allChargers, defaultVehicle, compare, settings } = useApp();
+  const { compare, settings } = useApp();
   const [catalog, setCatalog] = useState<CatalogCharger[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [query, setQuery] = useState(q ?? "");
@@ -38,8 +37,6 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   const [active, setActive] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMap, setMobileMap] = useState(false);
-  const eff = defaultVehicle?.efficiency ?? 3.5;
-  const kwh = 30;
 
   useEffect(() => {
     const params = new URLSearchParams({ limit: "100", ...(query.trim() ? { q: query.trim() } : {}), ...(sort === "price" ? { sort } : {}) });
@@ -59,38 +56,11 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     if (levels.length && !levels.includes(level)) return false;
     if (price != null && price > maxPrice) return false;
     if (power < minPower) return false;
-    if (time === "now" && charger.availability_status === "unavailable") return false;
+    if (time === "operational" && charger.availability_status === "unavailable") return false;
     return true;
   }), [catalog, radius, connectors, levels, maxPrice, minPower, time]);
 
-  const results = useMemo(() => {
-    const ql = query.toLowerCase().trim();
-    const list = allChargers
-      .map((c) => ({ c, cost: estimateCost(c, kwh, eff) }))
-      .filter(({ c, cost }) => {
-        if (ql && !["san jose", "downtown san jose", "951"].some((k) => ql.includes(k)) && !`${c.name} ${c.neighborhood} ${c.address}`.toLowerCase().includes(ql)) return false;
-        if (cost.distance > radius) return false;
-        if (connectors.length && !connectors.includes(c.connector)) return false;
-        if (levels.length && !levels.includes(c.level)) return false;
-        if (c.pricePerKwh > maxPrice) return false;
-        if (c.powerKw < minPower) return false;
-        if (time === "now" && c.status !== "Available") return false;
-        if (time === "evening" && c.hours.end < "22:00") return false;
-        if (time === "morning" && c.hours.start > "06:00") return false;
-        return true;
-      });
-    const score = (x: (typeof list)[number]) => x.cost.total - x.c.rating * 1.5;
-    list.sort((a, b) =>
-      sort === "price" ? a.c.pricePerKwh - b.c.pricePerKwh
-      : sort === "distance" ? a.cost.distance - b.cost.distance
-      : sort === "rating" ? b.c.rating - a.c.rating
-      : score(a) - score(b),
-    );
-    return list;
-  }, [allChargers, query, radius, connectors, levels, maxPrice, minPower, time, sort, eff]);
-
-  const bestId = [...results].sort((a, b) => a.cost.total - b.cost.total)[0]?.c.id;
-  const markers = useMemo(() => [...filteredCatalog.map((c) => ({ id: c.id, lat: c.latitude, lng: c.longitude, label: c.price_summary?.price_per_kwh != null ? `$${c.price_summary.price_per_kwh.toFixed(2)}` : "?" })), ...results.map(({ c }) => ({ id: c.id, lat: c.lat, lng: c.lng, label: `$${c.pricePerKwh.toFixed(2)}`, mine: true }))], [filteredCatalog, results]);
+  const markers = useMemo(() => filteredCatalog.map((charger) => ({ id: charger.id, lat: charger.latitude, lng: charger.longitude, label: charger.price_summary?.price_per_kwh != null ? `$${charger.price_summary.price_per_kwh.toFixed(2)}` : "?" })), [filteredCatalog]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const select = (id: string) => {
@@ -131,12 +101,10 @@ export default function FindChargers({ q = "" }: { q?: string }) {
               <Slider min={0} max={60} step={1} value={[minPower]} onValueChange={([v]) => setMinPower(v ?? 0)} />
             </div>
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Available</p>
+              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Operational status</p>
               <NativeSelect value={time} onChange={(e) => setTime(e.target.value)}>
                 <option value="any">Any time</option>
-                <option value="now">Available now</option>
-                <option value="morning">Early morning (6am)</option>
-                <option value="evening">Late evening (10pm+)</option>
+                <option value="operational">Last known operational</option>
               </NativeSelect>
             </div>
             <div className="sm:col-span-2">
@@ -160,15 +128,10 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div className={`w-full overflow-y-auto p-4 lg:w-[52%] ${mobileMap ? "hidden lg:block" : ""}`}>
-          <p className="mb-3 text-sm text-muted-foreground">{filteredCatalog.length + results.length} chargers · public catalog uses community prices for rankings</p>
+          <p className="mb-3 text-sm text-muted-foreground">{filteredCatalog.length} chargers · public catalog uses community prices for rankings</p>
           <div className="space-y-3">
             {filteredCatalog.map((c) => <CatalogChargerCard key={c.id} charger={c} active={active === c.id} onHover={setActive} />)}
-            {results.map(({ c }) => (
-              <div key={c.id} onClick={() => setActive(c.id)}>
-                <ChargerCard charger={c} active={active === c.id} onHover={setActive} kwh={kwh} bestValue={c.id === bestId} />
-              </div>
-            ))}
-            {!results.length && !filteredCatalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{catalogError ?? "No chargers match these filters. Import the NREL catalog to begin."}</div>}
+            {!filteredCatalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{catalogError ?? "No chargers match these filters. Import the NREL catalog to begin."}</div>}
           </div>
         </div>
         <div className={`flex-1 ${mobileMap ? "block" : "hidden lg:block"}`}>

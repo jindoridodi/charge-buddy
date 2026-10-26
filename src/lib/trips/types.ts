@@ -1,6 +1,6 @@
 export type ConnectorType = "J1772" | "CCS" | "NACS" | "CHAdeMO";
 export type TripObjective = "fastest" | "lowest_cost";
-export type TripOutcome = "feasible" | "no_feasible_plan" | "provider_unavailable";
+export type TripOutcome = "feasible" | "no_feasible_plan" | "search_bounds_reached" | "provider_unavailable";
 
 export interface Coordinates { lat: number; lng: number; }
 

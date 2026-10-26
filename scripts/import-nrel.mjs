@@ -10,6 +10,7 @@ const endpoint = "https://developer.nrel.gov/api/alt-fuel-stations/v1.json";
 const limit = 200;
 let offset = 0;
 let imported = 0;
+const importedSourceIds = new Set();
 
 function normalize(station) {
   if (!station.id || !station.station_name || station.latitude == null || station.longitude == null) return null;
@@ -37,9 +38,21 @@ while (true) {
     const { error } = await supabase.from("chargers").upsert(rows, { onConflict: "nrel_station_id" });
     if (error) throw error;
     imported += rows.length;
+    for (const row of rows) importedSourceIds.add(row.source_external_id);
   }
   offset += limit;
   process.stdout.write(`Imported ${imported} active public US stations\n`);
   if ((payload.fuel_stations ?? []).length < limit) break;
 }
-console.log(`Done. Imported or updated ${imported} chargers.`);
+
+if (!importedSourceIds.size) throw new Error("NREL returned no valid stations; refusing to mark existing catalog entries unavailable.");
+
+const { data: existingRows, error: existingError } = await supabase.from("chargers").select("id, source_external_id").eq("source", "nrel");
+if (existingError) throw existingError;
+const staleIds = (existingRows ?? []).filter((row) => !row.source_external_id || !importedSourceIds.has(row.source_external_id)).map((row) => row.id);
+for (let start = 0; start < staleIds.length; start += 1000) {
+  const { error } = await supabase.from("chargers").update({ public_access: false, availability_status: "unavailable", imported_at: new Date().toISOString() }).in("id", staleIds.slice(start, start + 1000));
+  if (error) throw error;
+}
+
+console.log(`Done. Imported or updated ${imported} chargers; marked ${staleIds.length} missing NREL records unavailable.`);

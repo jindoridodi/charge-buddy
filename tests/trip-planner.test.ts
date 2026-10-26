@@ -29,6 +29,11 @@ test("lowest-cost mode excludes unknown pricing while fastest mode may use it", 
   assert.equal(fastest?.stops[0]?.chargerId, "unknown"); assert.equal(cheapest?.stops[0]?.chargerId, "priced");
 });
 
+test("lowest-cost mode counts only energy purchased at charging stops", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "lowest_cost", routeMiles: 180, candidates: [charger("priced", 90, 0.5)] });
+  assert.equal(plan?.estimatedCost, (plan?.stops[0]?.estimatedChargeCost ?? 0));
+});
+
 test("returns null when no candidate can bridge an infeasible leg", () => {
   const plan = planChargingStops({ vehicle, startSocPercent: 30, reserveSocPercent: 10, objective: "fastest", routeMiles: 500, candidates: [charger("too-late", 250, 0.3)] });
   assert.equal(plan, null);

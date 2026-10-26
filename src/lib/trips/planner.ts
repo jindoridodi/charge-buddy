@@ -1,7 +1,7 @@
 import type { PlanningCharger, PlanningVehicle, TripObjective, TripStop } from "./types";
 
 export const DEFAULT_BUFFER = 1.12;
-const TRAVEL_COST_PER_KWH = 0.32;
+const MAX_SEARCH_ITERATIONS = 3000;
 
 export function normalizeConnector(connector: string) {
   const value = connector.toUpperCase();
@@ -31,7 +31,7 @@ function chargeMinutes(vehicle: PlanningVehicle, chargerKw: number, fromSoc: num
 
 export interface CorridorCandidate extends PlanningCharger { mileAlong: number; detourMiles: number; }
 export interface PlanningInput { vehicle: PlanningVehicle; startSocPercent: number; reserveSocPercent: number; objective: TripObjective; routeMiles: number; candidates: CorridorCandidate[]; }
-export interface PlanningResult { stops: TripStop[]; totalChargeMinutes: number; estimatedCost: number | null; warnings: string[]; }
+export interface PlanningResult { outcome: "feasible" | "search_bounds_reached"; stops: TripStop[]; totalChargeMinutes: number; estimatedCost: number | null; warnings: string[]; }
 
 /**
  * A bounded forward search. Candidate stations are projected onto the routed
@@ -51,10 +51,10 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
   const best = new Map<string, number>();
   let iterations = 0;
 
-  while (queue.length && iterations++ < 3000) {
+  while (queue.length && iterations++ < MAX_SEARCH_ITERATIONS) {
     queue.sort((a, b) => a.score - b.score);
     const current = queue.shift()!;
-    if (current.index === locations.length - 1) return { stops: current.stops, totalChargeMinutes: current.chargeMinutes, estimatedCost: current.cost, warnings: current.stops.some((stop) => stop.pricePerKwh == null) ? ["One or more stops have unknown pricing."] : [] };
+    if (current.index === locations.length - 1) return { outcome: "feasible", stops: current.stops, totalChargeMinutes: current.chargeMinutes, estimatedCost: current.cost, warnings: current.stops.some((stop) => stop.pricePerKwh == null) ? ["One or more stops have unknown pricing."] : [] };
     const known = best.get(key(current));
     if (known != null && known <= current.score) continue;
     best.set(key(current), current.score);
@@ -86,8 +86,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
       }
       const arrivalKwh = departureKwh - legKwh;
       const drivingMinutes = legMiles / 55 * 60;
-      const travelCost = legKwh * TRAVEL_COST_PER_KWH;
-      const nextCost = current.cost == null || hasUnknownPrice ? null : current.cost + addedCost + travelCost;
+      const nextCost = current.cost == null || hasUnknownPrice ? null : current.cost + addedCost;
       const nextScore = objective === "fastest" ? current.score + drivingMinutes + addedMinutes : (nextCost ?? Number.POSITIVE_INFINITY);
       const stops = [...current.stops];
       if (addedKwh > 0) {
@@ -97,5 +96,5 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
       queue.push({ index: nextIndex, energyKwh: arrivalKwh, score: nextScore, cost: nextCost, chargeMinutes: current.chargeMinutes + addedMinutes, stops });
     }
   }
-  return null;
+  return queue.length ? { outcome: "search_bounds_reached", stops: [], totalChargeMinutes: 0, estimatedCost: null, warnings: ["The configured search limit was reached before all candidate routes could be evaluated."] } : null;
 }
