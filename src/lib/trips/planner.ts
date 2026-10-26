@@ -42,7 +42,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
   const { vehicle, reserveSocPercent, routeMiles, objective } = input;
   const reserveKwh = vehicle.usableBatteryKwh * reserveSocPercent / 100;
   const initialKwh = vehicle.usableBatteryKwh * input.startSocPercent / 100;
-  const nodes = input.candidates.filter((candidate) => isCompatible(vehicle, candidate) && (objective !== "lowest_cost" || candidate.pricePerKwh != null)).sort((a, b) => a.mileAlong - b.mileAlong || a.id.localeCompare(b.id)).slice(0, 30);
+  const nodes = input.candidates.filter((candidate) => isCompatible(vehicle, candidate) && (objective !== "lowest_cost" || candidate.pricePerKwh != null)).sort((a, b) => a.mileAlong - b.mileAlong || a.id.localeCompare(b.id));
   const locations = [{ id: "origin", mileAlong: 0, detourMiles: 0 }, ...nodes, { id: "destination", mileAlong: routeMiles, detourMiles: 0 }];
   type State = { index: number; energyKwh: number; score: number; cost: number | null; chargeMinutes: number; stops: TripStop[]; };
   const bucket = 0.05 * vehicle.usableBatteryKwh;

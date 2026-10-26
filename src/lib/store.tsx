@@ -14,6 +14,7 @@ import {
 } from "./data";
 
 export interface User {
+  id: string;
   name: string;
   email: string;
   phone: string;
@@ -74,10 +75,15 @@ type Ctx = State & {
   toggleFavorite: (id: string) => void;
   toggleCompare: (id: string) => void;
   reset: () => void;
+  startSession: (user: User) => void;
 };
 
 const AppCtx = createContext<Ctx | null>(null);
 const KEY = "charge-buddy-state-v1";
+
+export function stateForSession(user: User): State {
+  return { ...initial, user, role: user.purpose === "host" ? "host" : "driver" };
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(initial);
@@ -122,6 +128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               : [...s.compare, id],
         })),
       reset: () => setState(initial),
+      startSession: (user) => setState(stateForSession(user)),
     };
   }, [state]);
 

@@ -1,6 +1,12 @@
-import type { CommunityPriceReport, PriceSummary } from "./types";
+import type { CommunityPriceReport, PriceSummary, PublicCommunityPriceReport } from "./types";
 
 export const CURRENT_REPORT_DAYS = 30;
+export const PUBLIC_PRICE_REPORT_COLUMNS = "id,charger_id,price_per_kwh,observed_at,note,state,created_at";
+
+export function toPublicPriceReport(report: CommunityPriceReport): PublicCommunityPriceReport {
+  const { reporter_id: _reporterId, ...publicReport } = report;
+  return publicReport;
+}
 
 export function isCurrentReport(report: Pick<CommunityPriceReport, "observed_at" | "state">, now = new Date()) {
   if (report.state !== "visible") return false;

@@ -37,14 +37,14 @@ export function Logo() {
 }
 
 export function SiteHeader() {
-  const { user, role, set } = useApp();
+  const { user, role, set, reset } = useApp();
   const [open, setOpen] = useState(false);
   const navigate = useRouter();
   const pathname = usePathname();
 
   const logout = async () => {
     try { await getBrowserSupabase().auth.signOut(); } catch { /* local state is still cleared */ }
-    set({ user: null });
+    reset();
     toast.success("Signed out");
     navigate.push("/");
   };

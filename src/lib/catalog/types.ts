@@ -11,6 +11,8 @@ export interface CommunityPriceReport {
   created_at: string;
 }
 
+export type PublicCommunityPriceReport = Omit<CommunityPriceReport, "reporter_id">;
+
 export interface CatalogCharger {
   id: string;
   nrel_station_id: number | null;

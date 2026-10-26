@@ -27,7 +27,7 @@ function Password({ value, onChange, placeholder }: { value: string; onChange: (
 const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function AuthPage() {
-  const { set } = useApp();
+  const { startSession } = useApp();
   const navigate = useRouter();
   const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">("login");
   const [f, setF] = useState({ name: "", email: "", password: "", confirm: "", purpose: "driver" as "driver" | "host" | "both" });
@@ -47,8 +47,8 @@ export default function AuthPage() {
     return () => unsubscribe?.();
   }, []);
 
-  const finish = (name: string, purpose: typeof f.purpose) => {
-    set({ user: { name, email: f.email, phone: "(408) 555-0142", purpose }, role: purpose === "host" ? "host" : "driver" });
+  const finish = (id: string, name: string, purpose: typeof f.purpose) => {
+    startSession({ id, name, email: f.email, phone: "(408) 555-0142", purpose });
     toast.success(`Welcome, ${name.split(" ")[0]}!`);
     navigate.push("/dashboard");
   };
@@ -64,7 +64,7 @@ export default function AuthPage() {
       const { data, error } = await getBrowserSupabase().auth.signInWithPassword({ email: f.email, password: f.password });
       if (error) throw error;
       const purpose = data.user.user_metadata["purpose"];
-      finish(data.user.user_metadata["full_name"] || (f.email.split("@")[0] ?? "Member"), purpose === "host" || purpose === "both" ? purpose : "driver");
+      finish(data.user.id, data.user.user_metadata["full_name"] || (f.email.split("@")[0] ?? "Member"), purpose === "host" || purpose === "both" ? purpose : "driver");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Could not sign in"); }
   };
 
@@ -80,7 +80,7 @@ export default function AuthPage() {
     try {
       const { data, error } = await getBrowserSupabase().auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.name.trim(), purpose: f.purpose } } });
       if (error) throw error;
-      if (data.session) finish(f.name.trim(), f.purpose);
+      if (data.session && data.user) finish(data.user.id, f.name.trim(), f.purpose);
       else toast.success("Check your email to confirm your account, then log in.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Could not create account"); }
   };

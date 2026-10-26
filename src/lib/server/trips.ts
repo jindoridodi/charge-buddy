@@ -1,6 +1,6 @@
 import "server-only";
 import type { NextRequest } from "next/server";
-import { priceSummary } from "@/lib/catalog/price";
+import { priceSummary, PUBLIC_PRICE_REPORT_COLUMNS } from "@/lib/catalog/price";
 import type { CatalogCharger, CommunityPriceReport } from "@/lib/catalog/types";
 import { supabaseForRequest } from "@/lib/supabase/server";
 import { planChargingStops, type CorridorCandidate } from "@/lib/trips/planner";
@@ -8,16 +8,20 @@ import type { Coordinates, PlanningCharger, PlanningVehicle, TripObjective } fro
 import { roadRoute } from "./providers/valhalla";
 
 const milesPerDegreeLatitude = 69;
-const milesPerDegreeLongitude = 58;
+
+function milesPerDegreeLongitude(latitude: number) {
+  return milesPerDegreeLatitude * Math.cos(latitude * Math.PI / 180);
+}
 
 function distanceToRouteMiles(point: Coordinates, route: Coordinates[]) {
   if (route.length < 2) return Infinity;
   let closest = Infinity;
   for (let i = 1; i < route.length; i++) {
     const a = route[i - 1]!; const b = route[i]!;
-    const px = point.lng * milesPerDegreeLongitude; const py = point.lat * milesPerDegreeLatitude;
-    const ax = a.lng * milesPerDegreeLongitude; const ay = a.lat * milesPerDegreeLatitude;
-    const bx = b.lng * milesPerDegreeLongitude; const by = b.lat * milesPerDegreeLatitude;
+    const longitudeScale = milesPerDegreeLongitude((point.lat + a.lat + b.lat) / 3);
+    const px = point.lng * longitudeScale; const py = point.lat * milesPerDegreeLatitude;
+    const ax = a.lng * longitudeScale; const ay = a.lat * milesPerDegreeLatitude;
+    const bx = b.lng * longitudeScale; const by = b.lat * milesPerDegreeLatitude;
     const dx = bx - ax; const dy = by - ay; const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
     closest = Math.min(closest, Math.hypot(px - (ax + t * dx), py - (ay + t * dy)));
   }
@@ -27,7 +31,7 @@ function distanceToRouteMiles(point: Coordinates, route: Coordinates[]) {
 function mileAlong(point: Coordinates, route: Coordinates[], totalMiles: number) {
   const segments = route.slice(1).map((b, index) => {
     const a = route[index]!;
-    return Math.hypot((b.lng - a.lng) * milesPerDegreeLongitude, (b.lat - a.lat) * milesPerDegreeLatitude);
+    return Math.hypot((b.lng - a.lng) * milesPerDegreeLongitude((a.lat + b.lat) / 2), (b.lat - a.lat) * milesPerDegreeLatitude);
   });
   const routeShapeMiles = segments.reduce((sum, distance) => sum + distance, 0);
   if (!routeShapeMiles) return 0;
@@ -35,9 +39,10 @@ function mileAlong(point: Coordinates, route: Coordinates[], totalMiles: number)
   let milesBefore = 0;
   for (let i = 1; i < route.length; i++) {
     const a = route[i - 1]!; const b = route[i]!;
-    const px = point.lng * milesPerDegreeLongitude; const py = point.lat * milesPerDegreeLatitude;
-    const ax = a.lng * milesPerDegreeLongitude; const ay = a.lat * milesPerDegreeLatitude;
-    const bx = b.lng * milesPerDegreeLongitude; const by = b.lat * milesPerDegreeLatitude;
+    const longitudeScale = milesPerDegreeLongitude((point.lat + a.lat + b.lat) / 3);
+    const px = point.lng * longitudeScale; const py = point.lat * milesPerDegreeLatitude;
+    const ax = a.lng * longitudeScale; const ay = a.lat * milesPerDegreeLatitude;
+    const bx = b.lng * longitudeScale; const by = b.lat * milesPerDegreeLatitude;
     const dx = bx - ax; const dy = by - ay; const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
     const distance = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
     if (distance < best.distance) best = { distance, miles: milesBefore + t * segments[i - 1]! };
@@ -47,14 +52,12 @@ function mileAlong(point: Coordinates, route: Coordinates[], totalMiles: number)
 }
 
 async function corridorCandidates(request: NextRequest, route: Coordinates[], routeMiles: number, maxDetourMiles: number): Promise<CorridorCandidate[]> {
-  const lats = route.map((point) => point.lat); const lngs = route.map((point) => point.lng);
-  const latPadding = maxDetourMiles / milesPerDegreeLatitude; const lngPadding = maxDetourMiles / milesPerDegreeLongitude;
   const supabase = supabaseForRequest(request);
-  const { data, error } = await supabase.from("chargers").select("*").eq("public_access", true).gte("latitude", Math.min(...lats) - latPadding).lte("latitude", Math.max(...lats) + latPadding).gte("longitude", Math.min(...lngs) - lngPadding).lte("longitude", Math.max(...lngs) + lngPadding).limit(500);
+  const { data, error } = await supabase.rpc("corridor_chargers", { route_points: route, max_detour_miles: maxDetourMiles });
   if (error) throw error;
   const chargers = (data ?? []) as CatalogCharger[];
   const ids = chargers.map((charger) => charger.id);
-  const { data: reports } = ids.length ? await supabase.from("community_price_reports").select("*").in("charger_id", ids).eq("state", "visible") : { data: [] };
+  const { data: reports } = ids.length ? await supabase.from("community_price_reports").select(PUBLIC_PRICE_REPORT_COLUMNS).in("charger_id", ids).eq("state", "visible").gte("observed_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)) : { data: [] };
   const grouped = new Map<string, CommunityPriceReport[]>();
   for (const report of (reports ?? []) as CommunityPriceReport[]) grouped.set(report.charger_id, [...(grouped.get(report.charger_id) ?? []), report]);
   return chargers.map((charger) => {

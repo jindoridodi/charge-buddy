@@ -33,3 +33,10 @@ test("returns null when no candidate can bridge an infeasible leg", () => {
   const plan = planChargingStops({ vehicle, startSocPercent: 30, reserveSocPercent: 10, objective: "fastest", routeMiles: 500, candidates: [charger("too-late", 250, 0.3)] });
   assert.equal(plan, null);
 });
+
+test("considers a later corridor charger when early chargers cannot finish the trip", () => {
+  const early = Array.from({ length: 30 }, (_, index) => charger(`early-${index}`, index + 1, 0.3));
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 350, candidates: [...early, charger("needed", 150, 0.3)] });
+
+  assert.ok(plan?.stops.some((stop) => stop.chargerId === "needed"));
+});

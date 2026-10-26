@@ -11,6 +11,11 @@ function escapedSearch(value: string) {
     .replace(/[\\%_*]/g, "\\$&");
 }
 
+function positiveInteger(value: string | null, fallback: number, maximum: number) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 1 ? Math.min(parsed, maximum) : fallback;
+}
+
 function catalogPriceSummary(charger: CatalogCharger): PriceSummary {
   return charger.community_price_per_kwh != null && charger.community_price_observed_at != null
     ? { status: "community", price_per_kwh: Number(charger.community_price_per_kwh), observed_at: charger.community_price_observed_at }
@@ -21,8 +26,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = supabaseForRequest(request);
     const { searchParams } = request.nextUrl;
-    const page = Math.max(Number(searchParams.get("page") ?? 1), 1);
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 30), 1), 100);
+    const page = positiveInteger(searchParams.get("page"), 1, 10_000);
+    const limit = positiveInteger(searchParams.get("limit"), 30, 100);
     const query = searchParams.get("q")?.trim();
     const safeQuery = query ? escapedSearch(query) : "";
     let catalog = supabase.from("catalog_charger_prices").select("*", { count: "exact" }).eq("public_access", true);

@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/smoke-test.mjs",
     "test:catalog": "tsx --test tests/catalog.test.ts",
+    "test:account-state": "tsx --test tests/account-state.test.ts",
+    "test:reports": "tsx --test tests/price-reports.test.ts",
+    "test:rate-limit": "tsx --test tests/rate-limit.test.ts",
     "test:trip": "tsx --test tests/trip-planner.test.ts",
     "import:nrel": "node scripts/import-nrel.mjs"
   },
