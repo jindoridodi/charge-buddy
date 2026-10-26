@@ -7,3 +7,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Repository guidance
+
+Read [docs/README.md](docs/README.md) before using `docs/` for task context. It is the document router: load only the document for the task branch you are working on.
+
+Source files, `package.json`, migrations, and tests are the source of truth for current behavior. The dated planning snapshots in `docs/` describe the October 24, 2026 baseline; verify a claim in the repository before implementing from one.
