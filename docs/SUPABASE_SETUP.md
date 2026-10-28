@@ -35,4 +35,6 @@ If older data already contains duplicate charger/reporter/date combinations, the
 
 Apply `202610280002_corridor_segments.sql` and `202610280003_catalog_search.sql` in order before deploying the updated catalog API. They repair imported availability values, include chargers between sparse route vertices, and provide the `search_catalog` RPC so geographic and eligibility filters run before pagination. The API requires the new RPC.
 
+Then apply `202610280004_utc_price_freshness.sql` so catalog price freshness uses UTC observation dates even when a database connection changes its session time zone.
+
 Discovery starts nationwide. Set a U.S. location to apply a clearly labeled straight-line radius, use the separate text filter to narrow results, and load subsequent pages as needed. Local demo listings remain browser-only and appear separately; shared Peer listing persistence remains future work.

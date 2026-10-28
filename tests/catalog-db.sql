@@ -44,3 +44,23 @@ begin
 end;
 $$;
 \echo 'PASS national/location search and eligibility before pagination beyond 100 candidates'
+
+reset role;
+insert into public.community_price_reports (charger_id, reporter_id, price_per_kwh, observed_at)
+values ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000001', 0.35, (now() at time zone 'UTC')::date - 30),
+  ('00000000-0000-0000-0000-000000000030', '00000000-0000-0000-0000-000000000001', 0.40, (now() at time zone 'UTC')::date - 31);
+select set_config('TimeZone', case when extract(hour from now() at time zone 'UTC') < 12 then 'Etc/GMT+12' else 'Etc/GMT-14' end, false);
+set role anon;
+do $$
+begin
+  if (select community_price_per_kwh from public.catalog_charger_prices where id = '00000000-0000-0000-0000-000000000020') is distinct from 0.35 then
+    raise exception 'UTC day-30 report was excluded in a different session time zone';
+  end if;
+  if (select community_price_per_kwh from public.catalog_charger_prices where id = '00000000-0000-0000-0000-000000000030') is not null then
+    raise exception 'UTC day-31 report was included in a different session time zone';
+  end if;
+end;
+$$;
+reset role;
+set timezone = 'UTC';
+\echo 'PASS UTC price freshness is independent of the database session time zone'

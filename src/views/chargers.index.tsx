@@ -71,10 +71,10 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     return () => controller.abort();
   }, [locationSearch]);
 
-  useEffect(() => { setPage(1); }, [query, origin, radius, connectors, levels, maxPrice, minPower, time, sort]);
+  useEffect(() => { setPage(1); }, [query, origin, locationSearch, radius, connectors, levels, maxPrice, minPower, time, sort]);
 
   useEffect(() => {
-    if (locationBusy || (locationSearch.query && !origin)) return;
+    if (locationBusy || (locationSearch.query && !origin)) { setLoading(false); return; }
     const controller = new AbortController();
     const params = new URLSearchParams({ limit: "100", page: String(page), sort,
       q: query.trim(), radius: String(radius), maxPrice: String(maxPrice), minPower: String(minPower),
@@ -180,7 +180,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
             {catalogError && <p role="alert" className="text-sm text-destructive">{catalogError}</p>}
             {(catalogError || catalog.length < total) && <Button variant="outline" disabled={loading} onClick={() => catalogError ? setRetry((value) => value + 1) : setPage((value) => value + 1)}>{catalogError ? "Retry loading chargers" : "Load more chargers"}</Button>}
             {!catalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{locationBusy || loading ? "Loading chargers…" : locationError ?? catalogError ?? "No public chargers match these filters."}</div>}
-            {!!localListings.length && <><h2 className="pt-4 text-sm font-semibold">Local demo listings · stored only in this browser</h2>{localListings.map((charger) => <ChargerCard key={charger.id} charger={charger} active={active === charger.id} onHover={setActive} />)}</>}
+            {!!localListings.length && <><h2 className="pt-4 text-sm font-semibold">Local demo listings · stored only in this browser</h2>{localListings.map((charger) => <ChargerCard key={charger.id} charger={charger} origin={origin} active={active === charger.id} onHover={setActive} />)}</>}
           </div>
         </div>
         <div className={`flex-1 ${mobileMap ? "block" : "hidden lg:block"}`}>

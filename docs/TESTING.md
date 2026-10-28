@@ -32,7 +32,9 @@ With Docker running Linux containers, run `npm run test:reports:db`. The test us
 
 The same command verifies route-segment midpoint inclusion, corridor distance exclusion, national versus selected-origin searches, and filtering before pagination when more than 100 ineligible records precede a match. Planner regressions include carrying cheap energy past a station, and service tests verify that applied search and timeout bounds are disclosed.
 
-The first run may download the pinned Supabase PostgreSQL image. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
+Database checks also change the session time zone across the UTC date boundary and verify the inclusive day-30 and expired day-31 prices.
+
+The first run may download the official `postgres:17.11-bookworm` image. The migrations require standard PostgreSQL; Supabase Auth roles and helpers come from the fixture. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
 
 ### Windows sandbox account-lookup failure
 

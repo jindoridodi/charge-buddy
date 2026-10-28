@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { Heart, MapPin, Plug, Star, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { estimateCost, money, type Charger } from "@/lib/data";
+import { distanceMiles, estimateCost, money, USER_LOC, type Charger } from "@/lib/data";
+import type { Coordinates } from "@/lib/trips/types";
 import { useApp } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 
@@ -23,16 +24,18 @@ export function ChargerCard({
   onHover,
   kwh = 30,
   bestValue,
+  origin = USER_LOC,
 }: {
   charger: Charger;
   active?: boolean;
   onHover?: (id: string | null) => void;
   kwh?: number;
   bestValue?: boolean;
+  origin?: Coordinates | null;
 }) {
   const { favorites, toggleFavorite, defaultVehicle, compare, toggleCompare } = useApp();
   const fav = favorites.includes(charger.id);
-  const cost = estimateCost(charger, kwh, defaultVehicle?.efficiency ?? 3.5);
+  const cost = estimateCost(charger, kwh, defaultVehicle?.efficiency ?? 3.5, origin ? distanceMiles(origin, charger) : 0);
   const inCompare = compare.includes(charger.id);
   const incompatible = defaultVehicle && defaultVehicle.connector !== charger.connector;
 
@@ -59,7 +62,7 @@ export function ChargerCard({
           </button>
         </div>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <MapPin className="h-3 w-3" /> {charger.neighborhood} · {cost.distance.toFixed(1)} mi · Host {charger.host}
+          <MapPin className="h-3 w-3" /> {charger.neighborhood} · {origin && `${cost.distance.toFixed(1)} mi · `}Host {charger.host}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5"><Plug className="h-3 w-3" />{charger.connector}</span>
@@ -71,7 +74,7 @@ export function ChargerCard({
         <div className="flex items-end justify-between pt-1">
           <div>
             <p className="text-lg font-bold">{money(charger.pricePerKwh)}<span className="text-xs font-normal text-muted-foreground">/kWh</span></p>
-            <p className="text-xs text-muted-foreground">+{money(charger.hostFee)} fee · est. {money(cost.total)} for {kwh} kWh</p>
+            <p className="text-xs text-muted-foreground">+{money(charger.hostFee)} fee · est. {money(cost.total)} for {kwh} kWh{!origin && " (excludes travel)"}</p>
           </div>
           <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
             <input type="checkbox" checked={inCompare} onChange={() => toggleCompare(charger.id)} className="accent-primary" />

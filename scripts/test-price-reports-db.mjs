@@ -7,7 +7,7 @@ const result = spawnSync("docker", [
   "run", "--rm", "--network", "none", "--user", "postgres",
   "--mount", `type=bind,source=${migrations},target=/migrations,readonly`,
   "--mount", `type=bind,source=${tests},target=/tests,readonly`,
-  "--entrypoint", "bash", "public.ecr.aws/supabase/postgres:17.11.0.003", "-euc",
+  "--entrypoint", "bash", "postgres:17.11-bookworm", "-euc",
   `initdb -D /tmp/price-report-db --auth=trust --no-locale >/dev/null
 pg_ctl -s -D /tmp/price-report-db -l /tmp/price-report-db.log -o "-k /tmp -c listen_addresses=" -w -t 20 start
 trap 'pg_ctl -D /tmp/price-report-db -m immediate -w stop >/dev/null' EXIT
