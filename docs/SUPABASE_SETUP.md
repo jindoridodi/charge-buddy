@@ -22,3 +22,9 @@ To make an administrator, set `app_metadata.role` to `admin` for that Supabase A
 - A report reaches `needs_review` after three flags from distinct users. It remains visible in report history, but is excluded from rankings.
 - Chargers without a current community report display **Price unknown** and sort after known prices.
 - Peer-hosted listing prices remain authoritative in local listing records.
+
+## Price-report permission repair
+
+Apply `202610280001_price_report_uniqueness.sql` after the preceding migrations. It replaces the duplicate-check trigger, which cannot read the private reporter column as an authenticated caller, with a unique constraint on charger, reporter, and observed date. Existing public-column grants and ownership policies stay enforced, and duplicates still return `23505` for the API's 409 response.
+
+If older data already contains duplicate charger/reporter/date combinations, the constraint creation fails before removing the old trigger. Review those records before retrying; the migration does not delete or rewrite reports automatically. Verify locally with `npm run test:reports:db` before applying migrations to a shared environment.

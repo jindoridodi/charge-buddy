@@ -26,6 +26,12 @@ Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependenc
 
 There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
 
+### Price-report database regression
+
+With Docker running Linux containers, run `npm run test:reports:db`. The test uses a disposable PostgreSQL 17 container, applies every application migration, and exercises authenticated inserts with public-field returns, duplicate rejection (`23505`), distinct accounts/dates, ownership enforcement, and private reporter identities for authenticated and anonymous callers. Only the Auth helper functions and roles are fixtures; application tables, constraints, grants, and RLS use the real migrations. This is a database check, not a live Supabase Auth or HTTP integration test.
+
+The first run may download the pinned Supabase PostgreSQL image. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
+
 ### Windows sandbox account-lookup failure
 
 In the restricted Windows agent sandbox, `tsx` may fail before collecting tests with `uv_os_get_passwd returned ENOMEM`. Confirm the cause with:

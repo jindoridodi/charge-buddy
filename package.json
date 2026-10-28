@@ -13,6 +13,7 @@
     "test:catalog": "tsx --import ./scripts/test-setup.mjs --test tests/catalog.test.ts",
     "test:account-state": "tsx --import ./scripts/test-setup.mjs --test tests/account-state.test.ts",
     "test:reports": "tsx --import ./scripts/test-setup.mjs --test tests/price-reports.test.ts",
+    "test:reports:db": "node scripts/test-price-reports-db.mjs",
     "test:rate-limit": "tsx --import ./scripts/test-setup.mjs --test tests/rate-limit.test.ts",
     "test:trip": "tsx --import ./scripts/test-setup.mjs --test tests/trip-planner.test.ts",
     "import:nrel": "node scripts/import-nrel.mjs"
