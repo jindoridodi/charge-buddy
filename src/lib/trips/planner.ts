@@ -1,7 +1,7 @@
 import type { PlanningCharger, PlanningVehicle, TripObjective, TripStop } from "./types";
 
 export const DEFAULT_BUFFER = 1.12;
-const MAX_SEARCH_ITERATIONS = 3000;
+export const SEARCH_LIMITS = { maxIterations: 3000, energyStepPercent: 5 } as const;
 
 export function normalizeConnector(connector: string) {
   const value = connector.toUpperCase();
@@ -45,13 +45,13 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
   const nodes = input.candidates.filter((candidate) => isCompatible(vehicle, candidate) && (objective !== "lowest_cost" || candidate.pricePerKwh != null)).sort((a, b) => a.mileAlong - b.mileAlong || a.id.localeCompare(b.id));
   const locations = [{ id: "origin", mileAlong: 0, detourMiles: 0 }, ...nodes, { id: "destination", mileAlong: routeMiles, detourMiles: 0 }];
   type State = { index: number; energyKwh: number; score: number; cost: number | null; chargeMinutes: number; stops: TripStop[]; };
-  const bucket = 0.05 * vehicle.usableBatteryKwh;
-  const key = (state: State) => `${state.index}:${Math.round(state.energyKwh / bucket)}`;
+  const bucket = SEARCH_LIMITS.energyStepPercent / 100 * vehicle.usableBatteryKwh;
+  const key = (state: State) => `${state.index}:${state.energyKwh.toFixed(9)}`;
   const queue: State[] = [{ index: 0, energyKwh: initialKwh, score: 0, cost: 0, chargeMinutes: 0, stops: [] }];
   const best = new Map<string, number>();
   let iterations = 0;
 
-  while (queue.length && iterations++ < MAX_SEARCH_ITERATIONS) {
+  while (queue.length && iterations++ < SEARCH_LIMITS.maxIterations) {
     queue.sort((a, b) => a.score - b.score);
     const current = queue.shift()!;
     if (current.index === locations.length - 1) return { outcome: "feasible", stops: current.stops, totalChargeMinutes: current.chargeMinutes, estimatedCost: current.cost, warnings: current.stops.some((stop) => stop.pricePerKwh == null) ? ["One or more stops have unknown pricing."] : [] };
@@ -68,32 +68,43 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
       const legKwh = legMiles * vehicle.consumptionWhPerMile / 1000 * DEFAULT_BUFFER;
       const requiredKwh = legKwh + reserveKwh;
       if (requiredKwh > vehicle.usableBatteryKwh) continue;
-      let departureKwh = current.energyKwh;
-      let addedKwh = 0;
-      let addedMinutes = 0;
-      let addedCost = 0;
-      let hasUnknownPrice = false;
-      if (requiredKwh > departureKwh) {
-        if (current.index === 0) continue;
-        const charger = nodes[current.index - 1]!;
-        addedKwh = requiredKwh - departureKwh;
-        const departureSoc = requiredKwh / vehicle.usableBatteryKwh * 100;
-        addedMinutes = chargeMinutes(vehicle, charger.powerKw!, departureKwh / vehicle.usableBatteryKwh * 100, departureSoc) + vehicle.stopOverheadMinutes;
-        if (charger.pricePerKwh != null) addedCost = addedKwh * charger.pricePerKwh;
-        else if (objective === "lowest_cost") continue;
-        else hasUnknownPrice = true;
-        departureKwh = requiredKwh;
+      if (current.index === 0 && requiredKwh > current.energyKwh) continue;
+      const minimumDeparture = Math.max(current.energyKwh, requiredKwh);
+      const departures = [minimumDeparture];
+      if (current.index > 0 && objective === "lowest_cost") {
+        for (let step = 1; step <= 100 / SEARCH_LIMITS.energyStepPercent; step++) {
+          const energy = Math.min(step * bucket, vehicle.usableBatteryKwh);
+          if (energy > minimumDeparture + 1e-9) departures.push(energy);
+        }
       }
-      const arrivalKwh = departureKwh - legKwh;
-      const drivingMinutes = legMiles / 55 * 60;
-      const nextCost = current.cost == null || hasUnknownPrice ? null : current.cost + addedCost;
-      const nextScore = objective === "fastest" ? current.score + drivingMinutes + addedMinutes : (nextCost ?? Number.POSITIVE_INFINITY);
-      const stops = [...current.stops];
-      if (addedKwh > 0) {
-        const charger = nodes[current.index - 1]!;
-        stops.push({ chargerId: charger.id, chargerName: charger.name, location: charger.location, arrivalSocPercent: Math.round(current.energyKwh / vehicle.usableBatteryKwh * 100), departureSocPercent: Math.round(departureKwh / vehicle.usableBatteryKwh * 100), energyAddedKwh: Math.round(addedKwh * 10) / 10, chargeMinutes: Math.round(addedMinutes), pricePerKwh: charger.pricePerKwh, estimatedChargeCost: charger.pricePerKwh == null ? null : Math.round(addedCost * 100) / 100, source: charger.source });
+      for (const targetKwh of departures) {
+        let departureKwh = current.energyKwh;
+        let addedKwh = 0;
+        let addedMinutes = 0;
+        let addedCost = 0;
+        let hasUnknownPrice = false;
+        if (targetKwh > departureKwh) {
+          if (current.index === 0) continue;
+          const charger = nodes[current.index - 1]!;
+          addedKwh = targetKwh - departureKwh;
+          const departureSoc = targetKwh / vehicle.usableBatteryKwh * 100;
+          addedMinutes = chargeMinutes(vehicle, charger.powerKw!, departureKwh / vehicle.usableBatteryKwh * 100, departureSoc) + vehicle.stopOverheadMinutes;
+          if (charger.pricePerKwh != null) addedCost = addedKwh * charger.pricePerKwh;
+          else if (objective === "lowest_cost") continue;
+          else hasUnknownPrice = true;
+          departureKwh = targetKwh;
+        }
+        const arrivalKwh = departureKwh - legKwh;
+        const drivingMinutes = legMiles / 55 * 60;
+        const nextCost = current.cost == null || hasUnknownPrice ? null : current.cost + addedCost;
+        const nextScore = objective === "fastest" ? current.score + drivingMinutes + addedMinutes : (nextCost ?? Number.POSITIVE_INFINITY);
+        const stops = [...current.stops];
+        if (addedKwh > 0) {
+          const charger = nodes[current.index - 1]!;
+          stops.push({ chargerId: charger.id, chargerName: charger.name, location: charger.location, arrivalSocPercent: Math.round(current.energyKwh / vehicle.usableBatteryKwh * 100), departureSocPercent: Math.round(departureKwh / vehicle.usableBatteryKwh * 100), energyAddedKwh: Math.round(addedKwh * 10) / 10, chargeMinutes: Math.round(addedMinutes), pricePerKwh: charger.pricePerKwh, estimatedChargeCost: charger.pricePerKwh == null ? null : Math.round(addedCost * 100) / 100, source: charger.source });
+        }
+        queue.push({ index: nextIndex, energyKwh: arrivalKwh, score: nextScore, cost: nextCost, chargeMinutes: current.chargeMinutes + addedMinutes, stops });
       }
-      queue.push({ index: nextIndex, energyKwh: arrivalKwh, score: nextScore, cost: nextCost, chargeMinutes: current.chargeMinutes + addedMinutes, stops });
     }
   }
   return queue.length ? { outcome: "search_bounds_reached", stops: [], totalChargeMinutes: 0, estimatedCost: null, warnings: ["The configured search limit was reached before all candidate routes could be evaluated."] } : null;

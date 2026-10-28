@@ -38,8 +38,8 @@ try {
   const home = await check("/", "Your Next Charge Is");
   await check("/about", "About Charge Buddy");
   await check("/auth", "Supabase email/password");
-  await check("/chargers", "Recommended / Best Value");
-  await check("/chargers?q=Willow", "Recommended / Best Value");
+  await check("/chargers", "Find Chargers");
+  await check("/chargers?q=Willow", "Find Chargers");
   await check("/chargers/c1", "Willow Glen Garage Charger");
   await check("/compare", "Compare Chargers");
   await check("/dashboard", "Welcome back");

@@ -1,7 +1,7 @@
 import "server-only";
 import type { Coordinates } from "@/lib/trips/types";
 
-const timeoutMs = 12_000;
+export const ROUTING_TIMEOUT_MS = 12_000;
 
 function baseUrl() {
   const value = process.env["VALHALLA_URL"]?.replace(/\/$/, "");
@@ -11,7 +11,7 @@ function baseUrl() {
 
 async function request<T>(path: string, body: object): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), ROUTING_TIMEOUT_MS);
   try {
     const response = await fetch(`${baseUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal, cache: "no-store" });
     if (!response.ok) throw new Error(`ROUTING_${response.status}`);

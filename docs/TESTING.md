@@ -20,15 +20,17 @@ Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependenc
 
 `npm run typecheck` generates Next.js route types before running TypeScript, so it also works before the first production build on a fresh checkout.
 
-`npm run test:unit` runs the existing catalog, Account-state, price-report, rate-limit, and trip-planner suites through Node's test runner and `tsx`. Run one suite with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. The shared test loader substitutes static image imports and the `server-only` marker, as Next.js test setups do; application logic is not mocked. These tests do not verify hydrated UI, database persistence, or live provider behavior.
+`npm run test:unit` runs catalog, Account-state, price-report, rate-limit, import, API, and trip-planner suites through Node's test runner and `tsx`. Run the original focused suites with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. API and import tests intercept only external HTTP calls with synthetic data; application logic is not mocked. The shared loader substitutes framework image imports and the `server-only` marker. These tests do not verify live providers or the complete browser acceptance path.
 
 `npm test` runs only `scripts/smoke-test.mjs`. It needs a fresh production build, chooses an available local port, and stops its own server afterward, including on assertion failure. It checks 12 HTTP route responses plus CSS and the hero image. Do not describe it as browser, API persistence, or end-to-end coverage.
 
 There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
 
-### Price-report database regression
+### Price-report and catalog database regressions
 
 With Docker running Linux containers, run `npm run test:reports:db`. The test uses a disposable PostgreSQL 17 container, applies every application migration, and exercises authenticated inserts with public-field returns, duplicate rejection (`23505`), distinct accounts/dates, ownership enforcement, and private reporter identities for authenticated and anonymous callers. Only the Auth helper functions and roles are fixtures; application tables, constraints, grants, and RLS use the real migrations. This is a database check, not a live Supabase Auth or HTTP integration test.
+
+The same command verifies route-segment midpoint inclusion, corridor distance exclusion, national versus selected-origin searches, and filtering before pagination when more than 100 ineligible records precede a match. Planner regressions include carrying cheap energy past a station, and service tests verify that applied search and timeout bounds are disclosed.
 
 The first run may download the pinned Supabase PostgreSQL image. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
 

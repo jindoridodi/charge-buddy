@@ -43,7 +43,7 @@ export function normalizeNrelStation(station: NrelStation) {
     source: "nrel" as const,
     source_external_id: String(station.id),
     public_access: true,
-    availability_status: station.status_code === "E" ? "available" as const : "unknown" as const,
+    availability_status: "unknown" as const,
     opening_hours_confidence: "unknown" as const,
   };
 }

@@ -30,7 +30,7 @@ jobs:
         run: npm run typecheck
       - name: Focused tests
         run: npm run test:unit
-      - name: Price-report database permissions
+      - name: Database permissions and catalog regressions
         if: runner.os == 'Linux'
         run: npm run test:reports:db
       - name: Production build

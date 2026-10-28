@@ -3,9 +3,9 @@ import type { NextRequest } from "next/server";
 import { priceSummary, PUBLIC_PRICE_REPORT_COLUMNS } from "@/lib/catalog/price";
 import type { CatalogCharger, CommunityPriceReport } from "@/lib/catalog/types";
 import { supabaseForRequest } from "@/lib/supabase/server";
-import { planChargingStops, type CorridorCandidate } from "@/lib/trips/planner";
+import { planChargingStops, SEARCH_LIMITS, type CorridorCandidate } from "@/lib/trips/planner";
 import type { Coordinates, PlanningCharger, PlanningVehicle, TripObjective } from "@/lib/trips/types";
-import { roadRoute } from "./providers/valhalla";
+import { roadRoute, ROUTING_TIMEOUT_MS } from "./providers/valhalla";
 
 const milesPerDegreeLatitude = 69;
 
@@ -75,5 +75,5 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
   const directPossible = vehicle.usableBatteryKwh * startSocPercent / 100 - directEnergy >= vehicle.usableBatteryKwh * reserveSocPercent / 100;
   const result = directPossible ? { outcome: "feasible" as const, stops: [], totalChargeMinutes: 0, estimatedCost: 0, warnings: [] } : planChargingStops({ vehicle, startSocPercent, reserveSocPercent, objective, routeMiles: road.miles, candidates });
   const freshness = candidates.map((candidate) => candidate.sourceUpdatedAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
-  return { outcome: result?.outcome ?? "no_feasible_plan", objective, route: road.coordinates, distanceMiles: Math.round(road.miles * 10) / 10, driveMinutes: Math.round(road.minutes), chargeMinutes: result?.totalChargeMinutes, estimatedCost: result?.estimatedCost == null ? result?.estimatedCost : Math.round(result.estimatedCost * 100) / 100, stops: result?.stops ?? [], warnings: result ? [...result.warnings, "Charging availability, prices, weather, traffic, and elevation are not live inputs.", "Candidate detours are corridor estimates; verify station access before departure."] : ["No feasible plan was found within the selected detour limit."], assumptions: ["Energy estimates use a curated vehicle baseline plus a 12% planning buffer.", "Costs cover known electricity purchased during this trip, excluding starting charge.", "A charging stop includes the vehicle-specific connection overhead.", "Only public NREL stations with compatible connectors are evaluated."], dataFreshness: freshness };
+  return { outcome: result?.outcome ?? "no_feasible_plan", objective, route: road.coordinates, distanceMiles: Math.round(road.miles * 10) / 10, driveMinutes: Math.round(road.minutes), chargeMinutes: result?.totalChargeMinutes, estimatedCost: result?.estimatedCost == null ? result?.estimatedCost : Math.round(result.estimatedCost * 100) / 100, stops: result?.stops ?? [], warnings: result ? [...result.warnings, "Charging availability, prices, weather, traffic, and elevation are not live inputs.", "Candidate detours are corridor estimates; verify station access before departure."] : ["No feasible plan was found within the selected detour limit."], assumptions: ["Energy estimates use a curated vehicle baseline plus a 12% planning buffer.", "Costs cover known electricity purchased during this trip, excluding starting charge.", "A charging stop includes the vehicle-specific connection overhead.", "Only public NREL stations with compatible connectors are evaluated.", `Search evaluates at most ${SEARCH_LIMITS.maxIterations} states; additional departure charge levels use ${SEARCH_LIMITS.energyStepPercent}% increments.`, `Maximum corridor detour: ${maxDetourMiles} miles. Routing requests time out after ${ROUTING_TIMEOUT_MS / 1000} seconds.`], dataFreshness: freshness };
 }

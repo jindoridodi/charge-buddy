@@ -11,8 +11,9 @@ export function toPublicPriceReport(report: CommunityPriceReport): PublicCommuni
 export function isCurrentReport(report: Pick<CommunityPriceReport, "observed_at" | "state">, now = new Date()) {
   if (report.state !== "visible") return false;
   const observed = new Date(`${report.observed_at}T00:00:00Z`);
-  const age = now.getTime() - observed.getTime();
-  return age >= 0 && age <= CURRENT_REPORT_DAYS * 24 * 60 * 60 * 1000;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const ageDays = Math.floor(now.getTime() / dayMs) - Math.floor(observed.getTime() / dayMs);
+  return ageDays >= 0 && ageDays <= CURRENT_REPORT_DAYS;
 }
 
 export function selectRankableReport(reports: CommunityPriceReport[], now = new Date()) {

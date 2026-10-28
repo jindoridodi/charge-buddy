@@ -36,6 +36,13 @@ test("lowest-cost mode counts only energy purchased at charging stops", () => {
   assert.equal(plan.stops[0]?.estimatedChargeCost, 11.7);
 });
 
+test("lowest-cost mode carries cheaper energy forward rather than buying only the next leg", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "lowest_cost", routeMiles: 300, candidates: [charger("cheap", 90, 0.1), charger("expensive", 180, 1)] });
+  assert.equal(plan?.outcome, "feasible");
+  assert.ok(Math.abs((plan?.estimatedCost ?? Infinity) - 10.02) < 1e-9);
+  assert.equal(plan?.stops[0]?.departureSocPercent, 100);
+});
+
 test("returns null when no candidate can bridge an infeasible leg", () => {
   const plan = planChargingStops({ vehicle, startSocPercent: 30, reserveSocPercent: 10, objective: "fastest", routeMiles: 500, candidates: [charger("too-late", 250, 0.3)] });
   assert.equal(plan, null);
