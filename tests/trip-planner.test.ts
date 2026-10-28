@@ -31,7 +31,9 @@ test("lowest-cost mode excludes unknown pricing while fastest mode may use it", 
 
 test("lowest-cost mode counts only energy purchased at charging stops", () => {
   const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "lowest_cost", routeMiles: 180, candidates: [charger("priced", 90, 0.5)] });
-  assert.equal(plan?.estimatedCost, (plan?.stops[0]?.estimatedChargeCost ?? 0));
+  assert.ok(plan?.estimatedCost != null);
+  assert.ok(Math.abs(plan.estimatedCost - 11.7) < 1e-9);
+  assert.equal(plan.stops[0]?.estimatedChargeCost, 11.7);
 });
 
 test("returns null when no candidate can bridge an infeasible leg", () => {
@@ -41,7 +43,8 @@ test("returns null when no candidate can bridge an infeasible leg", () => {
 
 test("considers a later corridor charger when early chargers cannot finish the trip", () => {
   const early = Array.from({ length: 30 }, (_, index) => charger(`early-${index}`, index + 1, 0.3));
-  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 350, candidates: [...early, charger("needed", 150, 0.3)] });
+  // The final 190 miles require 53.2 kWh, leaving the 6 kWh reserve within a 60 kWh battery.
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 350, candidates: [...early, charger("needed", 160, 0.3)] });
 
   assert.ok(plan?.stops.some((stop) => stop.chargerId === "needed"));
 });

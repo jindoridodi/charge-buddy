@@ -6,10 +6,10 @@ ChargeBuddy is a Next.js EV-charging marketplace and trip-planning application. 
 
 ### 1. Run the web application
 
-Use Node.js 22.12+ (or Node 24+) and npm:
+Use Node.js 24.12.0 (the CI version) and npm:
 
 ```powershell
-npm install
+npm ci
 Copy-Item .env.example .env.local
 npm run dev
 ```
@@ -18,11 +18,12 @@ Open [http://localhost:3000](http://localhost:3000). The browse/demo screens wor
 
 ```powershell
 npm run typecheck
+npm run test:unit     # All focused suites; no backend configuration needed
 npm run build
 npm test              # Run after npm run build
-npm run test:catalog
-npm run test:trip
 ```
+
+Run one suite with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. CI runs these checks on Linux and Windows from a clean lockfile install. See [Testing](docs/TESTING.md) for coverage and the Windows sandbox workaround.
 
 ### 2. Run local routing and geocoding services
 
