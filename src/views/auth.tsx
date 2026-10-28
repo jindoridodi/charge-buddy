@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/PageHeader";
 import { useApp } from "@/lib/store";
 import { toast } from "sonner";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 
 function Password({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const [show, setShow] = useState(false);
@@ -26,29 +27,48 @@ function Password({ value, onChange, placeholder }: { value: string; onChange: (
 const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function AuthPage() {
-  const { set } = useApp();
+  const { startSession } = useApp();
   const navigate = useRouter();
-  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">("login");
   const [f, setF] = useState({ name: "", email: "", password: "", confirm: "", purpose: "driver" as "driver" | "host" | "both" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const up = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v });
 
-  const finish = (name: string, purpose: typeof f.purpose) => {
-    set({ user: { name, email: f.email, phone: "(408) 555-0142", purpose }, role: purpose === "host" ? "host" : "driver" });
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const { data: { subscription } } = getBrowserSupabase().auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") setMode("reset");
+      });
+      unsubscribe = () => subscription.unsubscribe();
+    } catch {
+      // The page remains usable in demo mode until an auth action is requested.
+    }
+    return () => unsubscribe?.();
+  }, []);
+
+  const finish = (id: string, name: string, purpose: typeof f.purpose) => {
+    startSession({ id, name, email: f.email, phone: "(408) 555-0142", purpose });
     toast.success(`Welcome, ${name.split(" ")[0]}!`);
     navigate.push("/dashboard");
   };
 
-  const login = (e: React.FormEvent) => {
+  const login = async (e: React.FormEvent) => {
     e.preventDefault();
     const er: Record<string, string> = {};
     if (!emailOk(f.email)) er["email"] = "Enter a valid email";
     if (f.password.length < 6) er["password"] = "Password must be at least 6 characters";
     setErrors(er);
-    if (!Object.keys(er).length) finish((f.email.split("@")[0] ?? "").replace(/^\w/, (c) => c.toUpperCase()), "both");
+    if (Object.keys(er).length) return;
+    try {
+      const { data, error } = await getBrowserSupabase().auth.signInWithPassword({ email: f.email, password: f.password });
+      if (error) throw error;
+      const purpose = data.user.user_metadata["purpose"];
+      finish(data.user.id, data.user.user_metadata["full_name"] || (f.email.split("@")[0] ?? "Member"), purpose === "host" || purpose === "both" ? purpose : "driver");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not sign in"); }
   };
 
-  const signup = (e: React.FormEvent) => {
+  const signup = async (e: React.FormEvent) => {
     e.preventDefault();
     const er: Record<string, string> = {};
     if (f.name.trim().length < 2) er["name"] = "Enter your full name";
@@ -56,7 +76,13 @@ export default function AuthPage() {
     if (f.password.length < 6) er["password"] = "At least 6 characters";
     if (f.confirm !== f.password) er["confirm"] = "Passwords don't match";
     setErrors(er);
-    if (!Object.keys(er).length) finish(f.name.trim(), f.purpose);
+    if (Object.keys(er).length) return;
+    try {
+      const { data, error } = await getBrowserSupabase().auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.name.trim(), purpose: f.purpose } } });
+      if (error) throw error;
+      if (data.session && data.user) finish(data.user.id, f.name.trim(), f.purpose);
+      else toast.success("Check your email to confirm your account, then log in.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not create account"); }
   };
 
   const Err = ({ k }: { k: string }) => (errors[k] ? <p className="text-xs text-destructive">{errors[k]}</p> : null);
@@ -64,13 +90,33 @@ export default function AuthPage() {
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="rounded-3xl border bg-card p-8 shadow-card">
-        {mode === "forgot" ? (
+        {mode === "reset" ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (f.password.length < 6) return setErrors({ password: "Password must be at least 6 characters" });
+              if (f.confirm !== f.password) return setErrors({ confirm: "Passwords don't match" });
+              getBrowserSupabase().auth.updateUser({ password: f.password }).then(({ error }) => {
+                if (error) toast.error(error.message); else { toast.success("Password updated. Please sign in."); setMode("login"); setF({ ...f, password: "", confirm: "" }); }
+              }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not update password"));
+            }}
+            className="space-y-4"
+          >
+            <h1 className="text-2xl font-bold">Choose a new password</h1>
+            <Field label="New password"><Password value={f.password} onChange={up("password")} /></Field>
+            <Err k="password" />
+            <Field label="Confirm password"><Password value={f.confirm} onChange={up("confirm")} /></Field>
+            <Err k="confirm" />
+            <Button className="w-full">Update password</Button>
+          </form>
+        ) : mode === "forgot" ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
               if (!emailOk(f.email)) return setErrors({ email: "Enter a valid email" });
-              toast.success("Reset link sent (simulated)");
-              setMode("login");
+              getBrowserSupabase().auth.resetPasswordForEmail(f.email, { redirectTo: `${window.location.origin}/auth` }).then(({ error }) => {
+                if (error) toast.error(error.message); else { toast.success("Reset link sent"); setMode("login"); }
+              }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not send reset link"));
             }}
             className="space-y-4"
           >
@@ -123,7 +169,7 @@ export default function AuthPage() {
             </TabsContent>
           </Tabs>
         )}
-        <p className="mt-6 text-center text-xs text-muted-foreground">Demo only — no real account is created.</p>
+        <p className="mt-6 text-center text-xs text-muted-foreground">Accounts use Supabase email/password authentication.</p>
       </div>
     </div>
   );

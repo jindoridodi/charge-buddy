@@ -1,0 +1,43 @@
+services:
+  valhalla:
+    image: ${VALHALLA_IMAGE:-ghcr.io/valhalla/valhalla-scripted:latest}
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:8002:8002"
+    volumes:
+      - valhalla-data:/custom_files
+    environment:
+      tile_urls: ${OSM_PBF_URL:?Set OSM_PBF_URL in infra/.env}
+      build_elevation: "True"
+      build_admins: "True"
+      build_time_zones: "True"
+      build_tar: "True"
+      server_threads: ${VALHALLA_THREADS:-4}
+      serve_tiles: "True"
+
+  nominatim:
+    image: ${NOMINATIM_IMAGE:-mediagis/nominatim:5.3}
+    restart: unless-stopped
+    shm_size: ${NOMINATIM_SHM_SIZE:-2g}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:8080:8080"
+    volumes:
+      - nominatim-db:/var/lib/postgresql/16/main
+      - nominatim-flatnode:/nominatim/flatnode
+    environment:
+      PBF_URL: ${OSM_PBF_URL:?Set OSM_PBF_URL in infra/.env}
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:?Set NOMINATIM_PASSWORD in infra/.env}
+      IMPORT_STYLE: ${NOMINATIM_IMPORT_STYLE:-address}
+      IMPORT_US_POSTCODES: "true"
+      IMPORT_TIGER_ADDRESSES: "true"
+      IMPORT_WIKIPEDIA: "false"
+      THREADS: ${NOMINATIM_THREADS:-4}
+      GUNICORN_WORKERS: ${NOMINATIM_WORKERS:-2}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-2GB}
+      POSTGRES_MAINTENANCE_WORK_MEM: ${POSTGRES_MAINTENANCE_WORK_MEM:-4GB}
+      POSTGRES_EFFECTIVE_CACHE_SIZE: ${POSTGRES_EFFECTIVE_CACHE_SIZE:-8GB}
+
+volumes:
+  valhalla-data:
+  nominatim-db:
+  nominatim-flatnode:

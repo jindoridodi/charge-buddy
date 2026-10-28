@@ -41,7 +41,7 @@ export default function Page() {
             <Field label="Email"><Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} /></Field>
             <Field label="Phone"><Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></Field>
           </div>
-          <Button onClick={() => { app.set({ user: { ...profile, purpose: app.user?.purpose ?? "both" } }); toast.success("Profile saved"); }}>Save profile</Button>
+          <Button onClick={() => { app.set({ user: { id: app.user?.id ?? "demo", ...profile, purpose: app.user?.purpose ?? "both" } }); toast.success("Profile saved"); }}>Save profile</Button>
         </Card>
 
         <Card title="My vehicles">

@@ -1,25 +1,48 @@
 # Testing and release checklist
 
-> **Planning snapshot:** The baseline results and proposed coverage below are dated October 24, 2026. Use `package.json`, the test files, and current command output as the source of truth before changing or reporting test coverage.
+> **Current verification setup:** Updated October 28, 2026. The acceptance cases below remain proposed coverage, not evidence that the nationwide release is complete.
 
-This document separates the verified demo baseline from the tests the team still needs to implement. Acceptance criteria are in [Requirements](REQUIREMENTS.md); release responsibilities are in [SDLC](SDLC.md).
+This document separates current automated checks from coverage still needed. Acceptance criteria are in [Requirements](REQUIREMENTS.md); release responsibilities are in [SDLC](SDLC.md).
 
 ## Commands that exist now
 
-From the repository root:
+From the repository root, with Node.js 24.12.0 (the CI version):
 
 ```sh
 npm ci
 npm run typecheck
+npm run test:unit
 npm run build
 npm test
 ```
 
-Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependencies from the lockfile. On the inspected working checkout, dependencies were already present and `npm ci` was not rerun. The last three commands were run successfully on October 24, 2026.
+Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependencies from the lockfile. CI runs this sequence on Linux and Windows for pushes and pull requests, without backend credentials or live providers.
 
-`npm test` currently runs only `scripts/smoke-test.mjs`. It needs a completed production build, chooses an available local port, and stops its own server afterward. It checks 13 HTTP route responses plus CSS and the hero image. Do not describe it as unit, browser, API persistence, or end-to-end coverage.
+`npm run typecheck` generates Next.js route types before running TypeScript, so it also works before the first production build on a fresh checkout.
 
-There is currently no `lint`, `test:unit`, `test:integration`, or `test:e2e` script. Add and document appropriate tooling during T14-T16; do not put nonexistent commands into a required CI gate.
+`npm run test:unit` runs catalog, Account-state, price-report, rate-limit, import, API, and trip-planner suites through Node's test runner and `tsx`. Run the original focused suites with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. API and import tests intercept only external HTTP calls with synthetic data; application logic is not mocked. The shared loader substitutes framework image imports and the `server-only` marker. These tests do not verify live providers or the complete browser acceptance path.
+
+`npm test` runs only `scripts/smoke-test.mjs`. It needs a fresh production build, chooses an available local port, and stops its own server afterward, including on assertion failure. It checks 12 HTTP route responses plus CSS and the hero image. Do not describe it as browser, API persistence, or end-to-end coverage.
+
+There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
+
+### Price-report and catalog database regressions
+
+With Docker running Linux containers, run `npm run test:reports:db`. The test uses a disposable PostgreSQL 17 container, applies every application migration, and exercises authenticated inserts with public-field returns, duplicate rejection (`23505`), distinct accounts/dates, ownership enforcement, and private reporter identities for authenticated and anonymous callers. Only the Auth helper functions and roles are fixtures; application tables, constraints, grants, and RLS use the real migrations. This is a database check, not a live Supabase Auth or HTTP integration test.
+
+The same command verifies route-segment midpoint inclusion, corridor distance exclusion, national versus selected-origin searches, and filtering before pagination when more than 100 ineligible records precede a match. Planner regressions include carrying cheap energy past a station, and service tests verify that applied search and timeout bounds are disclosed.
+
+The first run may download the pinned Supabase PostgreSQL image. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
+
+### Windows sandbox account-lookup failure
+
+In the restricted Windows agent sandbox, `tsx` may fail before collecting tests with `uv_os_get_passwd returned ENOMEM`. Confirm the cause with:
+
+```sh
+node -e "require('node:os').userInfo(); console.log('user lookup passed')"
+```
+
+On the affected machine, the same command and the focused tests pass in a normal PowerShell session outside the sandbox. Run `npm run test:unit` there, or allow the agent's test command to run outside the sandbox. Do not patch `node_modules`, spoof the account identity, or interpret this error as proof of application memory exhaustion. Changing to `node --import tsx` does not avoid the lookup. CI uses normal hosted runners and does not rely on a restricted Windows account lookup.
 
 ## Coverage to add
 

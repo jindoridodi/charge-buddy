@@ -1,47 +1,77 @@
-# Charge Buddy
+# ChargeBuddy
 
-Next.js App Router + React + TypeScript, with the UI from `design-compose-kit-main`.
+ChargeBuddy is a Next.js EV-charging marketplace and trip-planning application. It uses Supabase and NREL for charger data, with optional self-hosted Valhalla and Nominatim services for EV route planning.
 
 ## Run locally
 
-Use Node.js 22.12+ (or 24+) and npm.
+### 1. Run the web application
 
-```sh
-npm install
+Use Node.js 24.12.0 (the CI version) and npm:
+
+```powershell
+npm ci
+Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000 (or the URL printed in the terminal).
+Open [http://localhost:3000](http://localhost:3000). The browse/demo screens work without backend configuration. Configure Supabase and NREL in `.env.local` to use the shared public charger catalog.
 
-```sh
-npm run build     # Build the production application
-npm start         # Serve the production build
+```powershell
 npm run typecheck
-npm test          # HTTP smoke tests; run npm run build first
+npm run test:unit     # All focused suites; no backend configuration needed
+npm run build
+npm test              # Run after npm run build
 ```
+
+Run one suite with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. CI runs these checks on Linux and Windows from a clean lockfile install. See [Testing](docs/TESTING.md) for coverage and the Windows sandbox workaround.
+
+### 2. Run local routing and geocoding services
+
+The EV Trip Planner requires Valhalla and Nominatim. Docker Desktop must be running.
+
+```powershell
+Copy-Item infra/.env.example infra/.env
+# Edit infra/.env and replace NOMINATIM_PASSWORD.
+Push-Location infra
+docker compose --env-file .env up -d
+docker compose logs -f valhalla nominatim
+Pop-Location
+```
+
+The supplied configuration imports California OpenStreetMap data to keep first-run development manageable. The initial data import can take a while. Do not remove the Docker volumes while it is running.
+
+After both services are healthy, set these values in `.env.local`:
+
+```env
+VALHALLA_URL=http://127.0.0.1:8002
+NOMINATIM_URL=http://127.0.0.1:8080
+```
+
+Validate the services:
+
+```powershell
+curl http://127.0.0.1:8002/status
+curl "http://127.0.0.1:8080/search?format=jsonv2&q=San%20Jose%2C%20CA"
+```
+
+Restart `npm run dev`, then use `/route-planner`. See [infra/README.md](infra/README.md) for production and national-import guidance.
+
+### 3. Load the public charger catalog
+
+Create a Supabase project, run the SQL migrations under `supabase/migrations/`, and fill in the Supabase and NREL values in `.env.local`.
+
+```powershell
+npm run import:nrel
+```
+
+See [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) for the catalog and community-price-report setup.
 
 ## Project structure
 
-- `src/app/`: Next.js pages, per-page metadata, shared layout, and error pages.
-- `src/views/`: The template's interactive page components.
-- `src/components/`: Shared UI components, including the browser-only Leaflet map.
-- `src/lib/store.tsx` and `src/lib/data.ts`: Demo state and sample data.
-- `src/assets/` and `public/`: Images and public assets.
-
-Add your backend endpoints using Next.js Route Handlers, for example `src/app/api/chargers/route.ts` for `/api/chargers`. No database or real authentication has been connected yet.
-
-Login, reservations, listings, favorites, and settings still use demo data and browser localStorage. Map tiles (OpenStreetMap) and Google Fonts need internet access.
-
-## Original project notes
-
-
-
-## Ideas
-Main Features:
-1. Charging Rental Platform (Public chargers + rented private chargers)
-2. Calculate which charger is the cheapest in a radius + calculate cost
-
-### Smaller features / ideas
-1. Map + Routing
-2. Calculate which charger is the cheapest in a radius + calculate cost
-3. Connect charging api's (if we can find any public ones lol)
+- `src/app/`: Next.js pages and Route Handlers.
+- `src/views/`: Interactive UI screens.
+- `src/lib/trips/`: EV vehicle catalog and charging-stop optimizer.
+- `src/lib/server/providers/`: Server-only Valhalla and Nominatim adapters.
+- `infra/`: Docker Compose routing/geocoding stack.
+- `supabase/migrations/`: Supabase schema migrations.
+- `docs/`: Requirements, architecture, and delivery guidance.

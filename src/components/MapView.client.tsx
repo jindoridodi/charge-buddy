@@ -13,8 +13,8 @@ export interface MapViewProps {
   markers: MapMarker[];
   activeId?: string | null;
   onSelect?: (id: string) => void;
-  route?: [number, number][];
-  center?: [number, number];
+  route?: [number, number][] | undefined;
+  center?: [number, number] | undefined;
   zoom?: number;
   className?: string;
 }
@@ -46,10 +46,7 @@ export default function MapViewClient({ markers, activeId, onSelect, route, cent
     const g = layer.current;
     if (!m || !g) return;
     g.clearLayers();
-    if (route && route.length > 1) {
-      const line = L.polyline(route, { color: "#14b8a6", weight: 5, opacity: 0.85 }).addTo(g);
-      m.fitBounds(line.getBounds(), { padding: [40, 40] });
-    }
+    if (route && route.length > 1) L.polyline(route, { color: "#14b8a6", weight: 5, opacity: 0.85 }).addTo(g);
     markers.forEach((mk) => {
       const icon = L.divIcon({
         className: "",
@@ -61,6 +58,16 @@ export default function MapViewClient({ markers, activeId, onSelect, route, cent
         .addTo(g);
     });
   }, [markers, activeId, route]);
+
+  useEffect(() => {
+    if (!map.current) return;
+    if (route && route.length > 1) map.current.fitBounds(L.latLngBounds(route), { padding: [40, 40] });
+    else if (markers.length) map.current.fitBounds(L.latLngBounds(markers.map((marker) => [marker.lat, marker.lng])), { padding: [30, 30], maxZoom: 13 });
+  }, [markers, route]);
+
+  useEffect(() => {
+    if (!route?.length && !markers.length) map.current?.setView(center, zoom);
+  }, [center[0], center[1], zoom, markers.length, route]);
 
   useEffect(() => {
     const a = markers.find((m) => m.id === activeId);
