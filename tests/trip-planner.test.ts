@@ -68,6 +68,16 @@ test("lowest-cost mode carries cheaper energy forward rather than buying only th
   assert.equal(plan?.stops[0]?.departureSocPercent, 100);
 });
 
+test("fastest mode carries energy from a fast charger to avoid slow charging later", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 300, candidates: [charger("fast", 90, 0.1, 150), charger("slow", 180, 1, 10)] });
+  assert.equal(plan?.outcome, "feasible");
+  assert.equal(plan.stops[0]?.chargerId, "fast");
+  // A full battery at mile 90 leaves only 4.8 kWh to buy at the 10 kW station.
+  assert.equal(plan.stops[0]?.departureSocPercent, 100);
+  assert.ok(Math.abs(plan.totalChargeMinutes - 66.88) < 1e-9);
+  assert.equal(plan.stops[1]?.energyAddedKwh, 4.8);
+});
+
 test("returns null when no candidate can bridge an infeasible leg", () => {
   const plan = planChargingStops({ vehicle, startSocPercent: 30, reserveSocPercent: 10, objective: "fastest", routeMiles: 500, candidates: [charger("too-late", 250, 0.3)] });
   assert.equal(plan, null);

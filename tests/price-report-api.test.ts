@@ -69,6 +69,15 @@ function backend(t: test.TestContext) {
 }
 
 for (const endpoint of endpoints) {
+  test(`${endpoint.name} rejects oversized UTF-8 bodies before Auth or database calls`, async (t) => {
+    configure(t);
+    const network = t.mock.method(globalThis, "fetch", async () => { throw new Error("Oversized input reached Auth or the database"); });
+    const response = await invoke(endpoint, JSON.stringify({ ...endpoint.body, padding: "é".repeat(8192) }));
+    assert.equal(response.status, 413);
+    assert.equal((await response.json()).code, "PAYLOAD_TOO_LARGE");
+    assert.equal(network.mock.callCount(), 0);
+  });
+
   test(`${endpoint.name} preserves authorization gates and valid success responses`, async (t) => {
     const state = backend(t);
     for (const role of [null, "ordinary", "admin"]) {

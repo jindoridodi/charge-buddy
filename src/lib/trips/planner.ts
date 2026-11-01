@@ -77,7 +77,9 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
       if (current.index === 0 && requiredKwh > current.energyKwh) continue;
       const minimumDeparture = Math.max(current.energyKwh, requiredKwh);
       const departures = [minimumDeparture];
-      if (current.index > 0 && objective === "lowest_cost") {
+      // Extra energy helps fastest mode only when it can replace charging at a slower station.
+      const canCarryFasterEnergy = current.index > 0 && nodes.slice(current.index).some((charger) => Math.min(charger.powerKw!, vehicle.maxDcKw) < Math.min(nodes[current.index - 1]!.powerKw!, vehicle.maxDcKw));
+      if (current.index > 0 && (objective === "lowest_cost" || canCarryFasterEnergy)) {
         for (let step = 1; step <= 100 / SEARCH_LIMITS.energyStepPercent; step++) {
           const energy = Math.min(step * bucket, vehicle.usableBatteryKwh);
           if (energy > minimumDeparture + 1e-9) departures.push(energy);

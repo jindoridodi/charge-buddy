@@ -41,7 +41,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   const [radius, setRadius] = useState(settings.maxDistance);
   const [connectors, setConnectors] = useState<string[]>(settings.connectors);
   const [levels, setLevels] = useState<string[]>([]);
-  const [maxPrice, setMaxPrice] = useState(0.5);
+  const [maxPrice, setMaxPrice] = useState(10);
   const [minPower, setMinPower] = useState(0);
   const [time, setTime] = useState("any");
   const [sort, setSort] = useState<keyof typeof SORTS>("name");
@@ -139,8 +139,8 @@ export default function FindChargers({ q = "" }: { q?: string }) {
               <Slider min={1} max={30} step={1} value={[radius]} onValueChange={([v]) => setRadius(v ?? 15)} />
             </div>
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Max price: ${maxPrice.toFixed(2)}/kWh</p>
-              <Slider min={0.15} max={0.5} step={0.01} value={[maxPrice]} onValueChange={([v]) => setMaxPrice(v ?? 0.5)} />
+              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Max price: {maxPrice === 10 ? "Any reported price" : `$${maxPrice.toFixed(2)}/kWh`}</p>
+              <Slider aria-label="Maximum price" min={0} max={10} step={0.01} value={[maxPrice]} onValueChange={([v]) => setMaxPrice(v ?? 10)} />
             </div>
             <div>
               <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Min power: {minPower} kW</p>

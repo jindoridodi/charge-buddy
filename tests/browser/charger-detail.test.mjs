@@ -99,3 +99,39 @@ test("submitting a report refreshes the displayed authoritative price", async (t
   await priceCard.getByText("$0.35/kWh", { exact: true }).waitFor();
   assert.equal(reports.length, 2);
 });
+
+test("public discovery includes a charger after its price becomes more than fifty cents", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  let price = null;
+  const caps = [];
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") {
+      const cap = Number(url.searchParams.get("maxPrice") ?? 10);
+      caps.push(cap);
+      const visible = price == null || price <= cap;
+      return route.fulfill({ json: { chargers: visible ? [{ ...charger, latitude: 42.36, longitude: -71.06, connector_types: [], price_summary: { ...charger.price_summary, price_per_kwh: price } }] : [], total: visible ? 1 : 0 } });
+    }
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByText(charger.name, { exact: true }).waitFor();
+  price = 0.60;
+  await page.reload();
+  await page.getByText(charger.name, { exact: true }).waitFor();
+  await page.getByText("$0.60/kWh", { exact: true }).waitFor();
+  assert.ok(caps.length >= 2);
+  assert.ok(caps.every((cap) => cap >= 9.99));
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  const priceSlider = page.getByRole("slider").nth(1);
+  await priceSlider.focus();
+  await page.keyboard.press("Home");
+  await page.getByText("No public chargers match these filters.", { exact: true }).waitFor();
+  await priceSlider.focus();
+  await page.keyboard.press("End");
+  await page.getByText(charger.name, { exact: true }).waitFor();
+});

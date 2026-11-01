@@ -1,3 +1,4 @@
+import { requestJson, PayloadTooLargeError } from "@/lib/server/request-json";
 import { z } from "zod";
 import { requireUser } from "@/lib/supabase/server";
 import { PUBLIC_PRICE_REPORT_COLUMNS, toPublicPriceReport } from "@/lib/catalog/price";
@@ -8,7 +9,7 @@ const schema = z.object({ pricePerKwh: z.number().positive().lt(10), observedAt:
 export async function POST(request: Request, context: RouteContext<"/api/chargers/[id]/price-reports">) {
   try {
     const { id } = await context.params;
-    const parsed = schema.safeParse(await request.json().catch(() => undefined));
+    const parsed = schema.safeParse(await requestJson(request));
     if (!parsed.success) return Response.json({ error: "Provide a valid USD/kWh price and observed date", code: "VALIDATION_ERROR" }, { status: 400 });
     if (parsed.data.observedAt > new Date().toISOString().slice(0, 10)) return Response.json({ error: "Observed date cannot be in the future", code: "VALIDATION_ERROR" }, { status: 400 });
     const { supabase, user } = await requireUser(request);
@@ -17,5 +18,6 @@ export async function POST(request: Request, context: RouteContext<"/api/charger
     if (error?.code === "23505") return Response.json({ error: "You have already reported a price for this charger on that date" }, { status: 409 });
     if (error) throw error;
     return Response.json({ report: toPublicPriceReport(data as CommunityPriceReport) }, { status: 201 });
-  } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Could not submit price" }, { status: 500 }); }
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) return Response.json({ error: error.message, code: "PAYLOAD_TOO_LARGE" }, { status: 413 }); return Response.json({ error: error instanceof Error ? error.message : "Could not submit price" }, { status: 500 }); }
 }
