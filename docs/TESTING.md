@@ -28,6 +28,8 @@ Review regressions cover importer reconciliation beyond 1,000 records, corridor 
 
 Trip API regressions verify malformed, empty, and structurally invalid request bodies return HTTP 400 with `VALIDATION_ERROR` without provider calls. Valid requests encountering upstream HTTP errors, network failures, or malformed provider JSON still return HTTP 503 with `provider_unavailable`.
 
+Price-report submission, flagging, and moderation use the same request-local decoding pattern. Their API regressions verify invalid JSON/shapes return 400/`VALIDATION_ERROR` before any Auth or database call, including future observation dates. Valid bodies retain existing 401/403 authorization gates, success responses, 409 duplicate conflicts, private report serialization, and 500 responses for genuine database HTTP, network, or response-JSON failures.
+
 `npm run test:ui` runs two focused charger-detail browser regressions after a production build. It requires installed Google Chrome and uses the pinned Playwright development dependency. They cover loading, service failure, retry success, true not-found, and refreshed prices after current and older report submissions. Browser API calls use synthetic responses; this does not verify real Auth, provider access, or database persistence. All external browser requests are blocked. Linux CI runs these checks using its [preinstalled Chrome](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) and synthetic public Supabase build configuration; local builds need the normal public Supabase variables from `.env.local`.
 
 There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
