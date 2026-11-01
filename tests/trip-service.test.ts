@@ -48,6 +48,13 @@ test("trip totals include the evaluated charging detour", async (t) => {
   assert.equal(trip.driveMinutes, 218);
 });
 
+test("a corridor beyond the disclosed scan limit is bounded rather than falsely infeasible", async (t) => {
+  configureTrip(t, false, 10_000);
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12);
+  assert.equal(trip.outcome, "search_bounds_reached");
+  assert.match(trip.assumptions.join(" "), /10,?000 corridor/);
+});
+
 test("successful trip results disclose the bounds actually applied", async (t) => {
   const config = { VALHALLA_URL: "https://routing-test.invalid", NEXT_PUBLIC_SUPABASE_URL: "https://catalog-test.invalid", NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-key" };
   const previous = Object.fromEntries(Object.keys(config).map((key) => [key, process.env[key]]));

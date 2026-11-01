@@ -13,6 +13,25 @@ test("a driver can charge at the origin before an otherwise unreachable trip", (
   assert.equal(plan?.stops[0]?.chargerId, "start");
 });
 
+test("a driver already at the plug can charge even when starting below reserve", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 5, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates: [charger("start", 0, 0.35)] });
+  assert.equal(plan?.outcome, "feasible");
+  assert.equal(plan?.stops[0]?.chargerId, "start");
+});
+
+test("a zero-mile destination cannot claim the reserve is retained below reserve without a charger", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 5, reserveSocPercent: 10, objective: "fastest", routeMiles: 0, candidates: [] });
+  assert.equal(plan, null);
+  const atPlug = planChargingStops({ vehicle, startSocPercent: 5, reserveSocPercent: 10, objective: "fastest", routeMiles: 0, candidates: [charger("start", 0, 0.35)] });
+  assert.equal(atPlug?.stops[0]?.energyAddedKwh, 3);
+});
+
+test("a dense compatible corridor reports its candidate bound", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates: Array.from({ length: 51 }, (_, i) => charger(`station-${i}`, i + 1, 0.35)) });
+  assert.equal(plan?.outcome, "search_bounds_reached");
+  assert.match(plan?.warnings.join(" ") ?? "", /candidate/);
+});
+
 test("normalizes CCS connectors and excludes inaccessible stations", () => {
   assert.equal(isCompatible(vehicle, charger("ccs", 1, 0.3)), true);
   assert.equal(isCompatible(vehicle, { ...charger("closed", 1, 0.3), availability: "unavailable" }), false);

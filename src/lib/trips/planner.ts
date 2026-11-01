@@ -1,7 +1,7 @@
 import type { PlanningCharger, PlanningVehicle, TripObjective, TripStop } from "./types";
 
 export const DEFAULT_BUFFER = 1.12;
-export const SEARCH_LIMITS = { maxIterations: 3000, energyStepPercent: 5 } as const;
+export const SEARCH_LIMITS = { maxIterations: 3000, energyStepPercent: 5, maxCandidates: 50, maxScannedCandidates: 10_000, maxTransitions: 10_000, maxQueuedStates: 2000 } as const;
 
 export function normalizeConnector(connector: string) {
   const value = connector.toUpperCase();
@@ -33,6 +33,10 @@ export interface CorridorCandidate extends PlanningCharger { mileAlong: number; 
 export interface PlanningInput { vehicle: PlanningVehicle; startSocPercent: number; reserveSocPercent: number; objective: TripObjective; routeMiles: number; candidates: CorridorCandidate[]; }
 export interface PlanningResult { outcome: "feasible" | "search_bounds_reached"; stops: TripStop[]; totalChargeMinutes: number; estimatedCost: number | null; warnings: string[]; }
 
+export function searchBoundsResult(): PlanningResult {
+  return { outcome: "search_bounds_reached", stops: [], totalChargeMinutes: 0, estimatedCost: null, warnings: ["A configured candidate or search-work limit was reached before all candidate routes could be evaluated."] };
+}
+
 /**
  * A bounded forward search. Candidate stations are projected onto the routed
  * road corridor; edge distance includes an explicit detour penalty. The live
@@ -43,6 +47,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
   const reserveKwh = vehicle.usableBatteryKwh * reserveSocPercent / 100;
   const initialKwh = vehicle.usableBatteryKwh * input.startSocPercent / 100;
   const nodes = input.candidates.filter((candidate) => isCompatible(vehicle, candidate) && (objective !== "lowest_cost" || candidate.pricePerKwh != null)).sort((a, b) => a.mileAlong - b.mileAlong || a.id.localeCompare(b.id));
+  if (nodes.length > SEARCH_LIMITS.maxCandidates) return searchBoundsResult();
   const locations = [{ id: "origin", mileAlong: 0, detourMiles: 0 }, ...nodes, { id: "destination", mileAlong: routeMiles, detourMiles: 0 }];
   type State = { index: number; energyKwh: number; score: number; cost: number | null; chargeMinutes: number; stops: TripStop[]; };
   const bucket = SEARCH_LIMITS.energyStepPercent / 100 * vehicle.usableBatteryKwh;
@@ -50,6 +55,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
   const queue: State[] = [{ index: 0, energyKwh: initialKwh, score: 0, cost: 0, chargeMinutes: 0, stops: [] }];
   const best = new Map<string, number>();
   let iterations = 0;
+  let transitions = 0;
 
   while (queue.length && iterations++ < SEARCH_LIMITS.maxIterations) {
     queue.sort((a, b) => a.score - b.score);
@@ -66,7 +72,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
       if (baseMiles < 0) continue;
       const legMiles = baseMiles + (currentNode.detourMiles || 0) + (next.detourMiles || 0);
       const legKwh = legMiles * vehicle.consumptionWhPerMile / 1000 * DEFAULT_BUFFER;
-      const requiredKwh = legKwh + reserveKwh;
+      const requiredKwh = current.index === 0 && nextIndex < locations.length - 1 && legMiles === 0 ? current.energyKwh : legKwh + reserveKwh;
       if (requiredKwh > vehicle.usableBatteryKwh) continue;
       if (current.index === 0 && requiredKwh > current.energyKwh) continue;
       const minimumDeparture = Math.max(current.energyKwh, requiredKwh);
@@ -78,6 +84,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
         }
       }
       for (const targetKwh of departures) {
+        if (++transitions > SEARCH_LIMITS.maxTransitions) return searchBoundsResult();
         let departureKwh = current.energyKwh;
         let addedKwh = 0;
         let addedMinutes = 0;
@@ -104,8 +111,9 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
           stops.push({ chargerId: charger.id, chargerName: charger.name, location: charger.location, arrivalSocPercent: Math.round(current.energyKwh / vehicle.usableBatteryKwh * 100), departureSocPercent: Math.round(departureKwh / vehicle.usableBatteryKwh * 100), energyAddedKwh: Math.round(addedKwh * 10) / 10, chargeMinutes: Math.round(addedMinutes), pricePerKwh: charger.pricePerKwh, estimatedChargeCost: charger.pricePerKwh == null ? null : Math.round(addedCost * 100) / 100, source: charger.source });
         }
         queue.push({ index: nextIndex, energyKwh: arrivalKwh, score: nextScore, cost: nextCost, chargeMinutes: current.chargeMinutes + addedMinutes, stops });
+        if (queue.length >= SEARCH_LIMITS.maxQueuedStates) return searchBoundsResult();
       }
     }
   }
-  return queue.length ? { outcome: "search_bounds_reached", stops: [], totalChargeMinutes: 0, estimatedCost: null, warnings: ["The configured search limit was reached before all candidate routes could be evaluated."] } : null;
+  return queue.length ? searchBoundsResult() : null;
 }

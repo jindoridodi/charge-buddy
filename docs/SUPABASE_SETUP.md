@@ -41,4 +41,6 @@ Discovery starts nationwide. Set a U.S. location to apply a clearly labeled stra
 
 Import reconciliation and trip corridor reads page through all records in stable ID order. Trip pricing reads the current-price view in batches of 50 station IDs; a failed price read returns a service failure rather than an infeasible plan. Deactivated imported stations return not found from the public detail API.
 
+Trip search evaluates at most 10,000 corridor records and 50 compatible candidates, 3,000 states, 10,000 transitions, and 2,000 queued states. Hitting a limit returns `search_bounds_reached` rather than claiming infeasibility. These bounds appear in the result assumptions. Import reconciliation continues through every page because it is an administrative task, outside the public trip request.
+
 Trip mileage includes estimated out-and-back charging detours. Additional detour driving time assumes 55 mph; the map still shows the original road corridor. Location/no-route rejections use HTTP 422 with `invalid_location`; other routing failures use HTTP 503. The adapter recognizes the location codes documented in [Valhalla's error definitions](https://github.com/valhalla/valhalla/blob/master/src/exceptions.cc).
