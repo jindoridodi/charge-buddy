@@ -15,6 +15,8 @@ The importer requests active (`status=E`) public US electric stations in pages, 
 
 The command loads `.env.local` using Next.js environment loading and the same normalizer exercised by catalog tests. An operational station has **unknown live availability**; operational status does not establish occupancy or access at departure time.
 
+Before deactivating missing records, the importer requires complete page arrays, a consistent `total_results`, expected page lengths, matching offsets when returned, valid normalized station identities, and exactly the reported number of unique IDs. This uses the provider's documented [station count and pagination contract](https://developer.nlr.gov/docs/transportation/alt-fuel-stations-v1/all/#response-fields). Failed runs may have upserted earlier valid pages but do not reconcile missing records; resolve the failure and rerun. Run one import at a time. These guards do not provide a transactional provider snapshot.
+
 To make an administrator, set `app_metadata.role` to `admin` for that Supabase Auth user. Administrators can restore a reviewed report (`state: "visible"`) or remove it (`state: "removed"`) through `PATCH /api/price-reports/:id`.
 
 Apply `202611010002_admin_price_report_visibility.sql` after earlier migrations to allow administrators to remove and restore another account's report with the API's public-field response. The policy trusts only authenticated `app_metadata.role`, not editable `user_metadata`. Reporter IDs remain protected by the existing column grants; ordinary accounts gain no moderation permissions, and removed reports remain hidden from other ordinary accounts and anonymous visitors.

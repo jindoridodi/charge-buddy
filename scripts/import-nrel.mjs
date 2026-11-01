@@ -14,6 +14,7 @@ const endpoint = "https://developer.nrel.gov/api/alt-fuel-stations/v1.json";
 const limit = 200;
 let offset = 0;
 let imported = 0;
+let expectedTotal = null;
 const importedSourceIds = new Set();
 
 while (true) {
@@ -21,19 +22,32 @@ while (true) {
   const response = await fetch(`${endpoint}?${params}`);
   if (!response.ok) throw new Error(`NREL request failed: ${response.status} ${await response.text()}`);
   const payload = await response.json();
-  const rows = (payload.fuel_stations ?? []).map(normalizeNrelStation).filter(Boolean);
+  const stations = payload?.fuel_stations;
+  const total = payload?.total_results;
+  if (!Array.isArray(stations) || !Number.isSafeInteger(total) || total < 0
+    || (payload.offset !== undefined && payload.offset !== offset)
+    || (expectedTotal !== null && total !== expectedTotal)
+    || stations.length !== Math.min(limit, total - offset)) {
+    throw new Error("NREL import incomplete: invalid page or inconsistent pagination; refusing catalog deactivation.");
+  }
+  expectedTotal = total;
+  const rows = stations.map(normalizeNrelStation);
+  if (rows.some((row) => !row || !Number.isSafeInteger(row.nrel_station_id) || row.nrel_station_id <= 0)) {
+    throw new Error("NREL import incomplete: invalid station; refusing catalog deactivation.");
+  }
   if (rows.length) {
     const { error } = await supabase.from("chargers").upsert(rows, { onConflict: "nrel_station_id" });
     if (error) throw error;
     imported += rows.length;
     for (const row of rows) importedSourceIds.add(row.source_external_id);
   }
-  offset += limit;
+  offset += stations.length;
   process.stdout.write(`Imported ${imported} active public US stations\n`);
-  if ((payload.fuel_stations ?? []).length < limit) break;
+  if (offset === expectedTotal) break;
 }
 
 if (!importedSourceIds.size) throw new Error("NREL returned no valid stations; refusing to mark existing catalog entries unavailable.");
+if (importedSourceIds.size !== expectedTotal) throw new Error("NREL import incomplete: duplicate or missing station IDs; refusing catalog deactivation.");
 
 const staleIds = [];
 for (let offset = 0; ; ) {

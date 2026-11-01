@@ -80,9 +80,9 @@ async function corridorCandidates(request: NextRequest, route: Coordinates[], ro
 
 export async function createTrip(request: NextRequest, origin: Coordinates, destination: Coordinates, vehicle: PlanningVehicle, startSocPercent: number, reserveSocPercent: number, objective: TripObjective, maxDetourMiles: number) {
   const road = await roadRoute(origin, destination);
-  const { candidates, truncated } = await corridorCandidates(request, road.coordinates, road.miles, maxDetourMiles, vehicle);
   const directEnergy = road.miles * vehicle.consumptionWhPerMile / 1000 * 1.12;
   const directPossible = vehicle.usableBatteryKwh * startSocPercent / 100 - directEnergy >= vehicle.usableBatteryKwh * reserveSocPercent / 100;
+  const { candidates, truncated } = directPossible ? { candidates: [], truncated: false } : await corridorCandidates(request, road.coordinates, road.miles, maxDetourMiles, vehicle);
   const result = directPossible ? { outcome: "feasible" as const, stops: [], totalChargeMinutes: 0, estimatedCost: 0, warnings: [] } : truncated ? searchBoundsResult() : planChargingStops({ vehicle, startSocPercent, reserveSocPercent, objective, routeMiles: road.miles, candidates });
   const freshness = candidates.map((candidate) => candidate.sourceUpdatedAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
   const detourMiles = result?.stops.reduce((sum, stop) => sum + 2 * (candidates.find((candidate) => candidate.id === stop.chargerId)?.detourMiles ?? 0), 0) ?? 0;

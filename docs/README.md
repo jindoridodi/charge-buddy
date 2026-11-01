@@ -11,6 +11,7 @@ Use this directory selectively. Source files, `package.json`, migrations, and te
 | Set up Supabase, import NREL data, or administer price reports | [Supabase and NREL setup](SUPABASE_SETUP.md). |
 | Run self-hosted routing/geocoding | [Infrastructure guide](../infra/README.md). |
 | Prepare a release or recovery workflow | [SDLC](SDLC.md) and [Testing](TESTING.md). |
+| Check the bounded PR stabilization findings and merge assessment | [Stabilization ledger](STABILIZATION.md). |
 
 ## Status conventions
 

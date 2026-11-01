@@ -27,6 +27,31 @@ function configureTrip(t: test.TestContext, failure = false, preceding = 0) {
   return station;
 }
 
+test("no-charge trips remain feasible without a configured catalog for either objective", async (t) => {
+  const keys = ["VALHALLA_URL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  process.env.VALHALLA_URL = "https://routing-test.invalid";
+  delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+  delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  t.after(() => { for (const key of keys) { if (previous[key] == null) delete process.env[key]; else process.env[key] = previous[key]; } });
+  const network = t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    assert.equal(new URL(input instanceof Request ? input.url : String(input)).origin, "https://routing-test.invalid", "No-charge trips must not query the catalog");
+    return Response.json({ trip: { summary: { length: 1, time: 60 }, legs: [{ shape: "????" }] } });
+  });
+  for (const objective of ["fastest", "lowest_cost"] as const) {
+    const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 37, lng: -122 }, { lat: 37.01, lng: -122 }, VEHICLE_CATALOG[0]!, 80, 10, objective, 12);
+    assert.equal(trip.outcome, "feasible");
+    assert.equal(trip.objective, objective);
+    assert.deepEqual(trip.stops, []);
+    assert.equal(trip.distanceMiles, 1);
+    assert.equal(trip.driveMinutes, 1);
+    assert.equal(trip.chargeMinutes, 0);
+    assert.equal(trip.estimatedCost, 0);
+    assert.equal(trip.dataFreshness, null);
+  }
+  assert.equal(network.mock.callCount(), 2);
+});
+
 test("a failed price read is a service failure, not an infeasible trip", async (t) => {
   configureTrip(t, true);
   await assert.rejects(createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "lowest_cost", 12));
