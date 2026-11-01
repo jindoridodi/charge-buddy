@@ -5,6 +5,26 @@ import { once } from "node:events";
 import { chromium } from "playwright";
 
 let server, browser, origin;
+const trip = { outcome: "feasible", objective: "fastest", route: [{ lat: 37, lng: -122 }, { lat: 38, lng: -122 }], distanceMiles: 80, driveMinutes: 90, chargeMinutes: 0, estimatedCost: 23, stops: [], warnings: [], assumptions: ["Synthetic evaluated assumptions"], dataFreshness: null };
+
+async function tripPage(t, overrides = {}) {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/vehicles/catalog") return route.fulfill({ json: { vehicles: [{ id: "first", name: "First EV", connector: "CCS", precision: "curated" }, { id: "second", name: "Second EV", connector: "CCS", precision: "curated" }] } });
+    if (url.pathname === "/api/locations") return overrides.location ? overrides.location(route) : route.fulfill({ json: { places: [{ id: "place", label: url.searchParams.get("q"), location: { lat: 37, lng: -122 } }] } });
+    if (url.pathname === "/api/trips") return overrides.plan ? overrides.plan(route) : route.fulfill({ json: { ...trip, objective: route.request().postDataJSON().objective } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/route-planner`);
+  await page.getByRole("button", { name: "Plan route", exact: true }).waitFor();
+  await page.getByLabel("Planning vehicle").selectOption("first");
+  return page;
+}
 const id = "00000000-0000-0000-0000-000000000055";
 const charger = { id, name: "Public test station", address: "Boston", connector_types: ["CCS"], operational_status: "E", availability_status: "unknown", imported_at: "2026-11-01T00:00:00Z", price_summary: { status: "unknown", price_per_kwh: null, observed_at: null } };
 
@@ -134,4 +154,96 @@ test("public discovery includes a charger after its price becomes more than fift
   await priceSlider.focus();
   await page.keyboard.press("End");
   await page.getByText(charger.name, { exact: true }).waitFor();
+});
+
+test("changing any planning input invalidates the completed trip", async (t) => {
+  const page = await tripPage(t);
+  const changes = [
+    () => page.getByLabel("Route objective").selectOption("lowest_cost"),
+    () => page.getByLabel("Starting point").fill("Boston, MA"),
+    () => page.getByLabel("Destination").fill("Portland, ME"),
+    () => page.getByLabel("Planning vehicle").selectOption("second"),
+    () => page.getByLabel("Current charge").fill("50"),
+    () => page.getByLabel("Battery reserve").fill("15"),
+    () => page.getByLabel("Maximum charger detour").fill("20"),
+  ];
+  for (const change of changes) {
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await page.getByText("Synthetic evaluated assumptions", { exact: true }).waitFor();
+    await change();
+    await page.getByText("Synthetic evaluated assumptions", { exact: true }).waitFor({ state: "hidden" });
+    assert.equal(await page.getByRole("heading", { name: "Charging plan", exact: true }).count(), 0);
+    assert.equal(await page.getByText("$23.00 en route", { exact: true }).count(), 0);
+  }
+});
+
+test("completed trip labels use the evaluated response objective", async (t) => {
+  const page = await tripPage(t, { plan: (route) => route.fulfill({ json: { ...trip, objective: "lowest_cost" } }) });
+  await page.getByRole("button", { name: "Plan route", exact: true }).click();
+  await page.getByText("Lowest estimated-cost route", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Fastest feasible estimate", { exact: true }).count(), 0);
+});
+
+test("editing while a trip is pending permits replanning and ignores the older response", async (t) => {
+  let release, started;
+  const held = new Promise((resolve) => { release = resolve; });
+  const pending = new Promise((resolve) => { started = resolve; });
+  let attempts = 0;
+  const page = await tripPage(t, { plan: async (route) => {
+    if (++attempts === 1) {
+      started();
+      await held;
+      return route.fulfill({ json: { ...trip, assumptions: ["Obsolete trip assumptions"] } }).catch(() => {});
+    }
+    return route.fulfill({ json: { ...trip, objective: "lowest_cost", estimatedCost: 12 } });
+  } });
+  try {
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await pending;
+    const cancelled = page.waitForEvent("requestfailed", (request) => new URL(request.url()).pathname === "/api/trips");
+    await page.getByLabel("Route objective").selectOption("lowest_cost");
+    await cancelled;
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await page.getByText("$12.00 en route", { exact: true }).waitFor();
+    release();
+    // A subsequent completed plan also proves the late response cannot keep the UI busy.
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await page.getByText("$12.00 en route", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Obsolete trip assumptions", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("$23.00 en route", { exact: true }).count(), 0);
+  } finally { release(); }
+});
+
+test("editing cancels pending geocoding and clears errors before the next plan", async (t) => {
+  let release, started;
+  const held = new Promise((resolve) => { release = resolve; });
+  const pending = new Promise((resolve) => { started = resolve; });
+  let locations = 0, plans = 0;
+  const page = await tripPage(t, {
+    location: async (route) => {
+      if (++locations === 1) {
+        started();
+        await held;
+        return route.fulfill({ status: 503, json: { error: "Obsolete location failure" } }).catch(() => {});
+      }
+      return route.fulfill({ json: { places: [{ id: "new", label: "New endpoint", location: { lat: 38, lng: -122 } }] } });
+    },
+    plan: (route) => ++plans === 1 ? route.fulfill({ json: trip }) : route.fulfill({ status: 503, json: { error: "Current provider failure" } }),
+  });
+  try {
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await pending;
+    const cancelled = page.waitForEvent("requestfailed", (request) => new URL(request.url()).pathname === "/api/locations");
+    await page.getByLabel("Starting point").fill("Boston, MA");
+    await cancelled;
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await page.getByText("Synthetic evaluated assumptions", { exact: true }).waitFor();
+    release();
+    assert.equal(plans, 1);
+    assert.equal(await page.getByText("Obsolete location failure", { exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Plan route", exact: true }).click();
+    await page.getByText("Current provider failure", { exact: true }).waitFor();
+    await page.getByLabel("Destination").fill("Portland, ME");
+    await page.getByText("Current provider failure", { exact: true }).waitFor({ state: "hidden" });
+  } finally { release(); }
 });
