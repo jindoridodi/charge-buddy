@@ -32,9 +32,28 @@ These are tracked as resolved work, not rediscovered open findings. This table s
 
 ## Verification and review results
 
-Local checks passed: 61 focused tests, seven browser regressions, disposable PostgreSQL privacy/moderation/catalog checks, typechecking, production build, and 12-route smoke checks plus CSS/image checks. The two scheduled reviews are pending; their pinned revisions and dispositions will be recorded before the pass closes.
+Product-code revision reviewed: `901e8c9abe3d85be2b995cff66abd9e8b5c8cbaf`. The closing documentation-only commit records these results without changing executable code.
 
-Remote PR #1 currently points to `c30db13`; its successful Linux/Windows checks do not cover these newer local commits. Remote main was verified at `cc55193`.
+Local checks passed: 61 focused tests, seven browser regressions, disposable PostgreSQL privacy/moderation/catalog checks, typechecking, production build, and 12-route smoke checks plus CSS/image checks. S01/S02 were reproduced red before their fixes and then passed their focused regressions.
+
+| Review | Standards axis | Spec axis | Disposition |
+| --- | --- | --- | --- |
+| Repair diff `d22d415...901e8c9` | 0 findings | 0 findings | No introduced stabilization regressions, blockers, or new follow-ups identified. |
+| Final branch diff `cc55193...901e8c9` | 0 findings | 1 P2 finding, F01 below | Existing branch defect; nonblocking follow-up for the foundation PR. No new stabilization regressions or merge-blocking code findings identified. |
+
+### Follow-up F01: local demo quote origin consistency
+
+- **Origin:** existing at `d22d415`, verified against that commit; not introduced by this stabilization pass.
+- **Location:** `src/components/ChargerCard.tsx:38`; connected callers `src/views/compare.tsx:15` and `src/views/chargers.$id.tsx:83`.
+- **Behavior:** discovery passes its selected origin into local demo listing costs, while detail/comparison use the default San Jose origin. The reviewer's synthetic check at `mine-1` produced $10.40 versus $10.68 for the same 30 kWh and vehicle.
+- **Disposition:** P2, nonblocking follow-up for this foundation PR because the affected discovery listings are explicitly labeled local demo data. This does not change authoritative public-catalog pricing or trip calculations. It must be resolved as part of the shared quote contract before nationwide core acceptance.
+- **Remedy:** carry the chosen quote origin into detail/comparison and add a cross-view regression at the shared quote/browser boundary. No external issue was opened in this pass.
+
+### Merge-readiness assessment
+
+**The foundation PR is ready to push for CI, but not yet ready to merge.** There are no code blockers identified by the two scheduled reviews; F01 is explicitly deferred. Required next gate: push the completed branch and verify hosted Linux/Windows checks on the actual proposed merge HEAD, including this documentation-only closure. Existing successful checks cover remote `c30db13`, not these local commits. Remote main was verified at `cc55193`.
+
+This bounded pass is closed: both selected fixes are committed, both scheduled reviews completed, and every resulting finding has a disposition. No additional whole-branch review loop is required by this pass. A changed merge base, new code, a failing check, or a newly demonstrated blocker would justify reopening the relevant checks. Nationwide release readiness remains separate and unproven.
 
 ## Known limits and follow-ups
 
