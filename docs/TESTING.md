@@ -40,6 +40,8 @@ Database checks also change the session time zone across the UTC date boundary a
 
 The concurrency regression uses two authenticated PostgreSQL connections, synchronized through a test-only barrier, to overlap the second and third flags. It verifies that the report becomes `needs_review` and its price disappears from ranking. `dblink` and the synchronization trigger exist only in the disposable test database; production needs neither.
 
+Administrator regressions reproduce the API's `UPDATE ... RETURNING` public fields when removing and restoring another account's report. They verify price-ranking removal/restoration, private reporter IDs even for administrators, unchanged owner read access, and denied moderation by anonymous users, ordinary accounts, and accounts with only an editable `user_metadata.role` value.
+
 The first run may download the official `postgres:17.11-bookworm` image. The migrations require standard PostgreSQL; Supabase Auth roles and helpers come from the fixture. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
 
 ### Windows sandbox account-lookup failure
