@@ -1,25 +1,68 @@
 # Testing and release checklist
 
-> **Planning snapshot:** The baseline results and proposed coverage below are dated October 24, 2026. Use `package.json`, the test files, and current command output as the source of truth before changing or reporting test coverage.
+> **Current verification setup:** Updated November 1, 2026. The acceptance cases below remain proposed coverage, not evidence that the nationwide release is complete.
 
-This document separates the verified demo baseline from the tests the team still needs to implement. Acceptance criteria are in [Requirements](REQUIREMENTS.md); release responsibilities are in [SDLC](SDLC.md).
+This document separates current automated checks from coverage still needed. Acceptance criteria are in [Requirements](REQUIREMENTS.md); release responsibilities are in [SDLC](SDLC.md).
 
 ## Commands that exist now
 
-From the repository root:
+From the repository root, with Node.js 24.12.0 (the CI version):
 
 ```sh
 npm ci
 npm run typecheck
+npm run test:unit
 npm run build
 npm test
 ```
 
-Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependencies from the lockfile. On the inspected working checkout, dependencies were already present and `npm ci` was not rerun. The last three commands were run successfully on October 24, 2026.
+Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependencies from the lockfile. CI runs this sequence on Linux and Windows for pushes and pull requests, without backend credentials or live providers.
 
-`npm test` currently runs only `scripts/smoke-test.mjs`. It needs a completed production build, chooses an available local port, and stops its own server afterward. It checks 13 HTTP route responses plus CSS and the hero image. Do not describe it as unit, browser, API persistence, or end-to-end coverage.
+`npm run typecheck` generates Next.js route types before running TypeScript, so it also works before the first production build on a fresh checkout.
 
-There is currently no `lint`, `test:unit`, `test:integration`, or `test:e2e` script. Add and document appropriate tooling during T14-T16; do not put nonexistent commands into a required CI gate.
+`npm run test:unit` runs catalog, Account-state, price-report, rate-limit, import, API, and trip-planner suites through Node's test runner and `tsx`. Run the original focused suites with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. API and import tests intercept only external HTTP calls with synthetic data; application logic is not mocked. The shared loader substitutes framework image imports and the `server-only` marker. These tests do not verify live providers or the complete browser acceptance path.
+
+`npm test` runs only `scripts/smoke-test.mjs`. It needs a fresh production build, chooses an available local port, and stops its own server afterward, including on assertion failure. It checks 12 HTTP route responses plus CSS and the hero image. Do not describe it as browser, API persistence, or end-to-end coverage.
+
+Review regressions cover importer reconciliation beyond 1,000 records, corridor pagination and bounded-size price queries, price-read failures, charging at the origin, estimated detour totals, location-specific routing failures, response-body timeouts, inactive charger details, CHAdeMO aliases, unknown-price ranking, and rendered unknown availability. Provider/database HTTP responses are synthetic; the timeout test controls the clock and a stalled response stream. The UI test renders the real catalog card; it does not substitute for browser interaction checks.
+
+The bounded stabilization regressions run the real importer in an isolated process with synthetic HTTP. Missing or inconsistent pagination metadata, prematurely empty pages, invalid station rows, and duplicate identities must abort without deactivating any missing catalog record; complete one-page and multi-page imports still reconcile all 1,001 fixture records. Direct trips for either objective skip catalog access entirely and retain route totals and a null station-data freshness value. Trips requiring charging still propagate catalog/price failures. Review scope and dispositions are tracked in [the stabilization ledger](STABILIZATION.md).
+
+Charger-detail API regressions put 1,000 newer `needs_review` reports ahead of a current visible $0.35 report and cap the history HTTP response at 1,000 rows. Detail reads the authoritative price from `catalog_charger_prices` independently of history, using the same summary mapping as discovery. Visible/reviewed history remains public without reporter identities; unknown authoritative prices remain unknown, and price-view or history HTTP, network, and malformed-JSON failures remain retryable 503 responses.
+
+Trip API regressions verify malformed, empty, and structurally invalid request bodies return HTTP 400 with `VALIDATION_ERROR` without provider calls. Valid requests encountering upstream HTTP errors, network failures, or malformed provider JSON still return HTTP 503 with `provider_unavailable`.
+
+Trip and price-report write APIs share a streaming JSON reader capped at 16 KiB of actual UTF-8 bytes. Oversized bodies return 413/`PAYLOAD_TOO_LARGE` before provider, Auth, or database calls, regardless of `Content-Length`. Price-report submission, flagging, and moderation regressions verify invalid JSON/shapes return 400/`VALIDATION_ERROR` before any Auth or database call, including future observation dates. Valid bodies retain existing 401/403 authorization gates, success responses, 409 duplicate conflicts, private report serialization, and 500 responses for genuine database HTTP, network, or response-JSON failures.
+
+Routing response regressions reject invalid numeric measurements, malformed polylines, and out-of-range decoded coordinates as 503/`ROUTING_INVALID_RESPONSE` before catalog access. Planner coverage verifies fastest mode carries extra energy from faster chargers to avoid slower charging later, while retaining the existing search limits and dense-corridor coverage.
+
+`npm run test:ui` runs seven focused discovery/detail/planner browser regressions after a production build. It requires installed Google Chrome and uses the pinned Playwright development dependency. They cover loading, service failure, retry success, true not-found, refreshed prices after current and older report submissions, discovery above $0.50/kWh with an adjustable filter covering all accepted report prices, invalidation after every planning-input change, response-based objective labels, cancellation during geocoding and trip evaluation, and recovery from current provider failures. Pending obsolete responses cannot restore results, errors, or loading state after an edit. Browser API calls use synthetic responses; this does not verify real Auth, provider access, or database persistence. All external browser requests are blocked. Linux CI runs these checks using its [preinstalled Chrome](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) and synthetic public Supabase build configuration; local builds need the normal public Supabase variables from `.env.local`.
+
+There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
+
+### Price-report and catalog database regressions
+
+With Docker running Linux containers, run `npm run test:reports:db`. The test uses a disposable PostgreSQL 17 container, applies every application migration, and exercises authenticated inserts with public-field returns, duplicate rejection (`23505`), distinct accounts/dates, ownership enforcement, and private reporter identities for authenticated and anonymous callers. Only the Auth helper functions and roles are fixtures; application tables, constraints, grants, and RLS use the real migrations. This is a database check, not a live Supabase Auth or HTTP integration test.
+
+The same command verifies route-segment midpoint inclusion, corridor distance exclusion, national versus selected-origin searches, and filtering before pagination when more than 100 ineligible records precede a match. Planner regressions include carrying cheap energy past a station, and service tests verify that applied search and timeout bounds are disclosed.
+
+Database checks also change the session time zone across the UTC date boundary and verify the inclusive day-30 and expired day-31 prices.
+
+The concurrency regression uses two authenticated PostgreSQL connections, synchronized through a test-only barrier, to overlap the second and third flags. It verifies that the report becomes `needs_review` and its price disappears from ranking. `dblink` and the synchronization trigger exist only in the disposable test database; production needs neither.
+
+Administrator regressions reproduce the API's `UPDATE ... RETURNING` public fields when removing and restoring another account's report. They verify price-ranking removal/restoration, private reporter IDs even for administrators, unchanged owner read access, and denied moderation by anonymous users, ordinary accounts, and accounts with only an editable `user_metadata.role` value.
+
+The first run may download the official `postgres:17.11-bookworm` image. The migrations require standard PostgreSQL; Supabase Auth roles and helpers come from the fixture. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
+
+### Windows sandbox account-lookup failure
+
+In the restricted Windows agent sandbox, `tsx` may fail before collecting tests with `uv_os_get_passwd returned ENOMEM`. Confirm the cause with:
+
+```sh
+node -e "require('node:os').userInfo(); console.log('user lookup passed')"
+```
+
+On the affected machine, the same command and the focused tests pass in a normal PowerShell session outside the sandbox. Run `npm run test:unit` there, or allow the agent's test command to run outside the sandbox. Do not patch `node_modules`, spoof the account identity, or interpret this error as proof of application memory exhaustion. Changing to `node --import tsx` does not avoid the lookup. CI uses normal hosted runners and does not rely on a restricted Windows account lookup.
 
 ## Coverage to add
 

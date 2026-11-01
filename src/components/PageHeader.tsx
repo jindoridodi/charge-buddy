@@ -18,7 +18,7 @@ export function Section({ children, className = "" }: { children: ReactNode; cla
   return <div className={`mx-auto max-w-7xl px-4 py-8 ${className}`}>{children}</div>;
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string | undefined }) {
   return (
     <label className="block space-y-1.5">
       <span className="text-sm font-medium">{label}</span>

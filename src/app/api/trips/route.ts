@@ -1,0 +1,29 @@
+import { requestJson, PayloadTooLargeError } from "@/lib/server/request-json";
+import { NextRequest } from "next/server";
+import { z } from "zod";
+import { createTrip } from "@/lib/server/trips";
+import { limitTripRequest } from "@/lib/server/rate-limit";
+import { vehicleById } from "@/lib/trips/vehicles";
+import { RoutingLocationError } from "@/lib/server/providers/valhalla";
+
+export const dynamic = "force-dynamic";
+
+const coordinate = z.object({ lat: z.number().gte(-90).lte(90), lng: z.number().gte(-180).lte(180) });
+const bodySchema = z.object({ origin: coordinate, destination: coordinate, vehicle: z.object({ catalogVehicleId: z.string() }), startSocPercent: z.number().min(5).max(100), reserveSocPercent: z.number().min(5).max(40).default(10), objective: z.enum(["fastest", "lowest_cost"]), maxDetourMiles: z.number().min(1).max(50).default(12) });
+
+export async function POST(request: NextRequest) {
+  const rate = limitTripRequest(request);
+  if (!rate.allowed) return Response.json({ error: "Too many trip requests. Try again shortly.", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
+  try {
+    const parsed = bodySchema.safeParse(await requestJson(request));
+    if (!parsed.success) return Response.json({ error: "Invalid trip request", code: "VALIDATION_ERROR", details: parsed.error.flatten() }, { status: 400 });
+    const vehicle = vehicleById(parsed.data.vehicle.catalogVehicleId);
+    if (!vehicle) return Response.json({ error: "Unknown planning vehicle", code: "VALIDATION_ERROR" }, { status: 400 });
+    return Response.json(await createTrip(request, parsed.data.origin, parsed.data.destination, vehicle, parsed.data.startSocPercent, parsed.data.reserveSocPercent, parsed.data.objective, parsed.data.maxDetourMiles));
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) return Response.json({ error: error.message, code: "PAYLOAD_TOO_LARGE" }, { status: 413 });
+    if (error instanceof RoutingLocationError) return Response.json({ outcome: "invalid_location", error: error.message, code: `ROUTING_${error.code}` }, { status: 422 });
+    const message = error instanceof Error ? error.message : "TRIP_UNAVAILABLE";
+    return Response.json({ outcome: "provider_unavailable", error: "Routing is unavailable. Configure the self-hosted Valhalla service and charger catalog.", code: message }, { status: 503 });
+  }
+}
