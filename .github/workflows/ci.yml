@@ -34,6 +34,12 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run test:reports:db
       - name: Production build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://catalog-test.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: browser-test-key
         run: npm run build
+      - name: Charger detail browser regressions
+        if: runner.os == 'Linux'
+        run: npm run test:ui
       - name: HTTP smoke tests
         run: npm test

@@ -22,6 +22,7 @@ To make an administrator, set `app_metadata.role` to `admin` for that Supabase A
 - A visible community report is current through the UTC date 30 days after its observed date; SQL catalog, detail, and trip calculations use this same date boundary.
 - The newest current community report is the only price used for catalog rankings.
 - A report reaches `needs_review` after three flags from distinct users. It remains visible in report history, but is excluded from rankings.
+- Apply `202611010001_serialize_report_flags.sql` after the earlier migrations. It locks each report before counting flags so concurrent submissions cannot miss that threshold; existing ownership policies and public report grants stay unchanged.
 - Chargers without a current community report display **Price unknown** in ordinary discovery and are excluded from electricity-price-ranked results before pagination.
 - Peer-hosted listing prices remain authoritative in local listing records.
 
@@ -44,3 +45,5 @@ Import reconciliation and trip corridor reads page through all records in stable
 Trip search evaluates at most 10,000 corridor records and 50 compatible candidates, 3,000 states, 10,000 transitions, and 2,000 queued states. Hitting a limit returns `search_bounds_reached` rather than claiming infeasibility. These bounds appear in the result assumptions. Import reconciliation continues through every page because it is an administrative task, outside the public trip request.
 
 Trip mileage includes estimated out-and-back charging detours. Additional detour driving time assumes 55 mph; the map still shows the original road corridor. Location/no-route rejections use HTTP 422 with `invalid_location`; other routing failures use HTTP 503. The adapter recognizes the location codes documented in [Valhalla's error definitions](https://github.com/valhalla/valhalla/blob/master/src/exceptions.cc).
+
+Charger detail returns 404 for missing or deactivated records and 503 for catalog failures. The UI distinguishes loading and not-found states from retryable failures. Successful price reports and flags reload the detail response so its displayed price uses the server's current-report selection.

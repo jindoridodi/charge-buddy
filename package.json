@@ -10,6 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node scripts/smoke-test.mjs",
     "test:unit": "tsx --import ./scripts/test-setup.mjs --test tests/*.test.ts",
+    "test:ui": "node --test tests/browser/*.test.mjs",
     "test:catalog": "tsx --import ./scripts/test-setup.mjs --test tests/catalog.test.ts",
     "test:account-state": "tsx --import ./scripts/test-setup.mjs --test tests/account-state.test.ts",
     "test:reports": "tsx --import ./scripts/test-setup.mjs --test tests/price-reports.test.ts",
@@ -75,6 +76,7 @@
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "playwright": "1.62.1",
     "supabase": "^2.122.0",
     "tsx": "^4.23.15",
     "typescript": "^5.8.3"

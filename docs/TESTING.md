@@ -1,6 +1,6 @@
 # Testing and release checklist
 
-> **Current verification setup:** Updated October 31, 2026. The acceptance cases below remain proposed coverage, not evidence that the nationwide release is complete.
+> **Current verification setup:** Updated November 1, 2026. The acceptance cases below remain proposed coverage, not evidence that the nationwide release is complete.
 
 This document separates current automated checks from coverage still needed. Acceptance criteria are in [Requirements](REQUIREMENTS.md); release responsibilities are in [SDLC](SDLC.md).
 
@@ -26,6 +26,8 @@ Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependenc
 
 Review regressions cover importer reconciliation beyond 1,000 records, corridor pagination and bounded-size price queries, price-read failures, charging at the origin, estimated detour totals, location-specific routing failures, response-body timeouts, inactive charger details, CHAdeMO aliases, unknown-price ranking, and rendered unknown availability. Provider/database HTTP responses are synthetic; the timeout test controls the clock and a stalled response stream. The UI test renders the real catalog card; it does not substitute for browser interaction checks.
 
+`npm run test:ui` runs two focused charger-detail browser regressions after a production build. It requires installed Google Chrome and uses the pinned Playwright development dependency. They cover loading, service failure, retry success, true not-found, and refreshed prices after current and older report submissions. Browser API calls use synthetic responses; this does not verify real Auth, provider access, or database persistence. All external browser requests are blocked. Linux CI runs these checks using its [preinstalled Chrome](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) and synthetic public Supabase build configuration; local builds need the normal public Supabase variables from `.env.local`.
+
 There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
 
 ### Price-report and catalog database regressions
@@ -35,6 +37,8 @@ With Docker running Linux containers, run `npm run test:reports:db`. The test us
 The same command verifies route-segment midpoint inclusion, corridor distance exclusion, national versus selected-origin searches, and filtering before pagination when more than 100 ineligible records precede a match. Planner regressions include carrying cheap energy past a station, and service tests verify that applied search and timeout bounds are disclosed.
 
 Database checks also change the session time zone across the UTC date boundary and verify the inclusive day-30 and expired day-31 prices.
+
+The concurrency regression uses two authenticated PostgreSQL connections, synchronized through a test-only barrier, to overlap the second and third flags. It verifies that the report becomes `needs_review` and its price disappears from ranking. `dblink` and the synchronization trigger exist only in the disposable test database; production needs neither.
 
 The first run may download the official `postgres:17.11-bookworm` image. The migrations require standard PostgreSQL; Supabase Auth roles and helpers come from the fixture. The test container has no network access or persistent data mounts, mounts only migrations/tests read-only, and is removed after the test. Linux CI runs it alongside the focused suites; the Windows CI job does not provide Linux Docker containers.
 
