@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import type { CatalogCharger, PriceSummary } from "@/lib/catalog/types";
+import type { CatalogCharger } from "@/lib/catalog/types";
+import { catalogPriceSummary } from "@/lib/catalog/price";
 import { supabaseForRequest } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -26,12 +27,6 @@ function escapedSearch(value: string) {
 function positiveInteger(value: string | null, fallback: number, maximum: number) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 1 ? Math.min(parsed, maximum) : fallback;
-}
-
-function catalogPriceSummary(charger: CatalogCharger): PriceSummary {
-  return charger.community_price_per_kwh != null && charger.community_price_observed_at != null
-    ? { status: "community", price_per_kwh: Number(charger.community_price_per_kwh), observed_at: charger.community_price_observed_at }
-    : { status: "unknown", price_per_kwh: null, observed_at: null };
 }
 
 export async function GET(request: NextRequest) {
