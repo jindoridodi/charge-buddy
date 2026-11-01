@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   const rate = limitTripRequest(request);
   if (!rate.allowed) return Response.json({ error: "Too many trip requests. Try again shortly.", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
   try {
-    const parsed = bodySchema.safeParse(await request.json());
+    const parsed = bodySchema.safeParse(await request.json().catch(() => undefined));
     if (!parsed.success) return Response.json({ error: "Invalid trip request", code: "VALIDATION_ERROR", details: parsed.error.flatten() }, { status: 400 });
     const vehicle = vehicleById(parsed.data.vehicle.catalogVehicleId);
     if (!vehicle) return Response.json({ error: "Unknown planning vehicle", code: "VALIDATION_ERROR" }, { status: 400 });
