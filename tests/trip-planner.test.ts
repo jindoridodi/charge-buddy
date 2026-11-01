@@ -7,6 +7,12 @@ import type { PlanningVehicle } from "../src/lib/trips/types";
 const vehicle: PlanningVehicle = { id: "test", name: "Test EV", usableBatteryKwh: 60, consumptionWhPerMile: 250, connector: "CCS", maxDcKw: 150, chargeCurve: [{ socPercent: 0, powerKw: 150 }, { socPercent: 80, powerKw: 60 }], stopOverheadMinutes: 5, precision: "curated" };
 const charger = (id: string, mileAlong: number, pricePerKwh: number | null, powerKw = 100): CorridorCandidate => ({ id, name: id, location: { lat: 0, lng: 0 }, connectorTypes: ["J1772COMBO"], powerKw, pricePerKwh, source: "nrel", sourceUpdatedAt: null, availability: "available", publicAccess: true, detourMiles: 0, mileAlong });
 
+test("a driver can charge at the origin before an otherwise unreachable trip", () => {
+  const plan = planChargingStops({ vehicle, startSocPercent: 15, reserveSocPercent: 10, objective: "fastest", routeMiles: 180, candidates: [charger("start", 0, 0.35)] });
+  assert.equal(plan?.outcome, "feasible");
+  assert.equal(plan?.stops[0]?.chargerId, "start");
+});
+
 test("normalizes CCS connectors and excludes inaccessible stations", () => {
   assert.equal(isCompatible(vehicle, charger("ccs", 1, 0.3)), true);
   assert.equal(isCompatible(vehicle, { ...charger("closed", 1, 0.3), availability: "unavailable" }), false);

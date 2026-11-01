@@ -1,6 +1,6 @@
 # Testing and release checklist
 
-> **Current verification setup:** Updated October 28, 2026. The acceptance cases below remain proposed coverage, not evidence that the nationwide release is complete.
+> **Current verification setup:** Updated October 31, 2026. The acceptance cases below remain proposed coverage, not evidence that the nationwide release is complete.
 
 This document separates current automated checks from coverage still needed. Acceptance criteria are in [Requirements](REQUIREMENTS.md); release responsibilities are in [SDLC](SDLC.md).
 
@@ -23,6 +23,8 @@ Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependenc
 `npm run test:unit` runs catalog, Account-state, price-report, rate-limit, import, API, and trip-planner suites through Node's test runner and `tsx`. Run the original focused suites with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. API and import tests intercept only external HTTP calls with synthetic data; application logic is not mocked. The shared loader substitutes framework image imports and the `server-only` marker. These tests do not verify live providers or the complete browser acceptance path.
 
 `npm test` runs only `scripts/smoke-test.mjs`. It needs a fresh production build, chooses an available local port, and stops its own server afterward, including on assertion failure. It checks 12 HTTP route responses plus CSS and the hero image. Do not describe it as browser, API persistence, or end-to-end coverage.
+
+Review regressions cover importer reconciliation beyond 1,000 records, corridor pagination and bounded-size price queries, price-read failures, charging at the origin, estimated detour totals, location-specific routing failures, response-body timeouts, inactive charger details, CHAdeMO aliases, unknown-price ranking, and rendered unknown availability. Provider/database HTTP responses are synthetic; the timeout test controls the clock and a stalled response stream. The UI test renders the real catalog card; it does not substitute for browser interaction checks.
 
 There is currently no `lint`, `test:integration`, or `test:e2e` script. Add the remaining coverage as the corresponding features are implemented.
 

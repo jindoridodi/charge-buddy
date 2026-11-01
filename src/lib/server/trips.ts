@@ -1,7 +1,6 @@
 import "server-only";
 import type { NextRequest } from "next/server";
-import { priceSummary, PUBLIC_PRICE_REPORT_COLUMNS } from "@/lib/catalog/price";
-import type { CatalogCharger, CommunityPriceReport } from "@/lib/catalog/types";
+import type { CatalogCharger } from "@/lib/catalog/types";
 import { supabaseForRequest } from "@/lib/supabase/server";
 import { planChargingStops, SEARCH_LIMITS, type CorridorCandidate } from "@/lib/trips/planner";
 import type { Coordinates, PlanningCharger, PlanningVehicle, TripObjective } from "@/lib/trips/types";
@@ -53,17 +52,25 @@ function mileAlong(point: Coordinates, route: Coordinates[], totalMiles: number)
 
 async function corridorCandidates(request: NextRequest, route: Coordinates[], routeMiles: number, maxDetourMiles: number): Promise<CorridorCandidate[]> {
   const supabase = supabaseForRequest(request);
-  const { data, error } = await supabase.rpc("corridor_chargers", { route_points: route, max_detour_miles: maxDetourMiles });
-  if (error) throw error;
-  const chargers = (data ?? []) as CatalogCharger[];
+  const chargers: CatalogCharger[] = [];
+  for (let offset = 0; ; ) {
+    const { data, error } = await supabase.rpc("corridor_chargers", { route_points: route, max_detour_miles: maxDetourMiles }).order("id").range(offset, offset + 99);
+    if (error) throw error;
+    if (!data?.length) break;
+    chargers.push(...data as CatalogCharger[]);
+    offset += data.length;
+  }
   const ids = chargers.map((charger) => charger.id);
-  const { data: reports } = ids.length ? await supabase.from("community_price_reports").select(PUBLIC_PRICE_REPORT_COLUMNS).in("charger_id", ids).eq("state", "visible").gte("observed_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)) : { data: [] };
-  const grouped = new Map<string, CommunityPriceReport[]>();
-  for (const report of (reports ?? []) as CommunityPriceReport[]) grouped.set(report.charger_id, [...(grouped.get(report.charger_id) ?? []), report]);
+  const prices = new Map<string, number | null>();
+  for (let offset = 0; offset < ids.length; offset += 50) {
+    const { data, error } = await supabase.from("catalog_charger_prices").select("id, community_price_per_kwh").in("id", ids.slice(offset, offset + 50));
+    if (error) throw error;
+    for (const row of data ?? []) prices.set(row.id, row.community_price_per_kwh == null ? null : Number(row.community_price_per_kwh));
+  }
   return chargers.map((charger) => {
     const location = { lat: charger.latitude, lng: charger.longitude };
     const detourMiles = distanceToRouteMiles(location, route);
-    const price = priceSummary(grouped.get(charger.id) ?? []).price_per_kwh;
+    const price = prices.get(charger.id) ?? null;
     return { id: charger.id, name: charger.name, location, connectorTypes: charger.connector_types, powerKw: charger.power_kw == null ? null : Number(charger.power_kw), pricePerKwh: price, source: charger.source, sourceUpdatedAt: charger.source_updated_at, availability: charger.availability_status, publicAccess: charger.public_access, detourMiles, mileAlong: mileAlong(location, route, routeMiles) };
   }).filter((charger) => charger.detourMiles <= maxDetourMiles);
 }
@@ -75,5 +82,6 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
   const directPossible = vehicle.usableBatteryKwh * startSocPercent / 100 - directEnergy >= vehicle.usableBatteryKwh * reserveSocPercent / 100;
   const result = directPossible ? { outcome: "feasible" as const, stops: [], totalChargeMinutes: 0, estimatedCost: 0, warnings: [] } : planChargingStops({ vehicle, startSocPercent, reserveSocPercent, objective, routeMiles: road.miles, candidates });
   const freshness = candidates.map((candidate) => candidate.sourceUpdatedAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
-  return { outcome: result?.outcome ?? "no_feasible_plan", objective, route: road.coordinates, distanceMiles: Math.round(road.miles * 10) / 10, driveMinutes: Math.round(road.minutes), chargeMinutes: result?.totalChargeMinutes, estimatedCost: result?.estimatedCost == null ? result?.estimatedCost : Math.round(result.estimatedCost * 100) / 100, stops: result?.stops ?? [], warnings: result ? [...result.warnings, "Charging availability, prices, weather, traffic, and elevation are not live inputs.", "Candidate detours are corridor estimates; verify station access before departure."] : ["No feasible plan was found within the selected detour limit."], assumptions: ["Energy estimates use a curated vehicle baseline plus a 12% planning buffer.", "Costs cover known electricity purchased during this trip, excluding starting charge.", "A charging stop includes the vehicle-specific connection overhead.", "Only public NREL stations with compatible connectors are evaluated.", `Search evaluates at most ${SEARCH_LIMITS.maxIterations} states; additional departure charge levels use ${SEARCH_LIMITS.energyStepPercent}% increments.`, `Maximum corridor detour: ${maxDetourMiles} miles. Routing requests time out after ${ROUTING_TIMEOUT_MS / 1000} seconds.`], dataFreshness: freshness };
+  const detourMiles = result?.stops.reduce((sum, stop) => sum + 2 * (candidates.find((candidate) => candidate.id === stop.chargerId)?.detourMiles ?? 0), 0) ?? 0;
+  return { outcome: result?.outcome ?? "no_feasible_plan", objective, route: road.coordinates, distanceMiles: Math.round((road.miles + detourMiles) * 10) / 10, driveMinutes: Math.round(road.minutes + detourMiles / 55 * 60), chargeMinutes: result?.totalChargeMinutes, estimatedCost: result?.estimatedCost == null ? result?.estimatedCost : Math.round(result.estimatedCost * 100) / 100, stops: result?.stops ?? [], warnings: result ? [...result.warnings, "Charging availability, prices, weather, traffic, and elevation are not live inputs.", "Candidate detours are corridor estimates; verify station access before departure."] : ["No feasible plan was found within the selected detour limit."], assumptions: ["Energy estimates use a curated vehicle baseline plus a 12% planning buffer.", "Costs cover known electricity purchased during this trip, excluding starting charge.", "Detour mileage is estimated from the corridor; additional driving time assumes 55 mph. The map shows the original routed corridor.", "A charging stop includes the vehicle-specific connection overhead.", "Only public NREL stations with compatible connectors are evaluated.", `Search evaluates at most ${SEARCH_LIMITS.maxIterations} states; additional departure charge levels use ${SEARCH_LIMITS.energyStepPercent}% increments.`, `Maximum corridor detour: ${maxDetourMiles} miles. Routing requests time out after ${ROUTING_TIMEOUT_MS / 1000} seconds.`], dataFreshness: freshness };
 }

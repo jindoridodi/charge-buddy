@@ -22,7 +22,7 @@ To make an administrator, set `app_metadata.role` to `admin` for that Supabase A
 - A visible community report is current through the UTC date 30 days after its observed date; SQL catalog, detail, and trip calculations use this same date boundary.
 - The newest current community report is the only price used for catalog rankings.
 - A report reaches `needs_review` after three flags from distinct users. It remains visible in report history, but is excluded from rankings.
-- Chargers without a current community report display **Price unknown** and sort after known prices.
+- Chargers without a current community report display **Price unknown** in ordinary discovery and are excluded from electricity-price-ranked results before pagination.
 - Peer-hosted listing prices remain authoritative in local listing records.
 
 ## Price-report permission repair
@@ -38,3 +38,7 @@ Apply `202610280002_corridor_segments.sql` and `202610280003_catalog_search.sql`
 Then apply `202610280004_utc_price_freshness.sql` so catalog price freshness uses UTC observation dates even when a database connection changes its session time zone.
 
 Discovery starts nationwide. Set a U.S. location to apply a clearly labeled straight-line radius, use the separate text filter to narrow results, and load subsequent pages as needed. Local demo listings remain browser-only and appear separately; shared Peer listing persistence remains future work.
+
+Import reconciliation and trip corridor reads page through all records in stable ID order. Trip pricing reads the current-price view in batches of 50 station IDs; a failed price read returns a service failure rather than an infeasible plan. Deactivated imported stations return not found from the public detail API.
+
+Trip mileage includes estimated out-and-back charging detours. Additional detour driving time assumes 55 mph; the map still shows the original road corridor. Location/no-route rejections use HTTP 422 with `invalid_location`; other routing failures use HTTP 503. The adapter recognizes the location codes documented in [Valhalla's error definitions](https://github.com/valhalla/valhalla/blob/master/src/exceptions.cc).

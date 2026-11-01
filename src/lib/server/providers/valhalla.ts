@@ -3,6 +3,10 @@ import type { Coordinates } from "@/lib/trips/types";
 
 export const ROUTING_TIMEOUT_MS = 12_000;
 
+export class RoutingLocationError extends Error {
+  constructor(readonly code: number) { super("No drivable route connects these locations. Try points near connected roads within the routing service's coverage."); }
+}
+
 function baseUrl() {
   const value = process.env["VALHALLA_URL"]?.replace(/\/$/, "");
   if (!value) throw new Error("ROUTING_NOT_CONFIGURED");
@@ -14,8 +18,14 @@ async function request<T>(path: string, body: object): Promise<T> {
   const timer = setTimeout(() => controller.abort(), ROUTING_TIMEOUT_MS);
   try {
     const response = await fetch(`${baseUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal, cache: "no-store" });
-    if (!response.ok) throw new Error(`ROUTING_${response.status}`);
-    return response.json() as Promise<T>;
+    if (!response.ok) {
+      if (response.status === 400) {
+        const error = await response.json().catch(() => null) as { error_code?: number } | null;
+        if (error?.error_code != null && [170, 171, 172, 442].includes(error.error_code)) throw new RoutingLocationError(error.error_code);
+      }
+      throw new Error(`ROUTING_${response.status}`);
+    }
+    return await response.json() as T;
   } finally { clearTimeout(timer); }
 }
 

@@ -63,7 +63,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
       const next = locations[nextIndex]!;
       const currentNode = locations[current.index]!;
       const baseMiles = next.mileAlong - currentNode.mileAlong;
-      if (baseMiles <= 0) continue;
+      if (baseMiles < 0) continue;
       const legMiles = baseMiles + (currentNode.detourMiles || 0) + (next.detourMiles || 0);
       const legKwh = legMiles * vehicle.consumptionWhPerMile / 1000 * DEFAULT_BUFFER;
       const requiredKwh = legKwh + reserveKwh;

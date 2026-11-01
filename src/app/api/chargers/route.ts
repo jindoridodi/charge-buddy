@@ -52,13 +52,14 @@ export async function GET(request: NextRequest) {
     const query = searchParams.get("q")?.trim();
     const safeQuery = query ? escapedSearch(query) : "";
     const f = filters.data;
-    const connectors = f.connectors.flatMap((connector) => connector === "CCS" ? ["CCS", "J1772COMBO"] : connector === "NACS" ? ["NACS", "TESLA"] : [connector]);
+    const connectors = f.connectors.flatMap((connector) => connector === "CCS" ? ["CCS", "J1772COMBO"] : connector === "NACS" ? ["NACS", "TESLA"] : connector === "CHAdeMO" ? ["CHAdeMO", "CHADEMO"] : [connector]);
     let catalog = supabase.rpc("search_catalog", {
       origin_lat: f.lat ?? null, origin_lng: f.lng ?? null, radius_miles: f.radius,
       connectors, levels: f.levels, max_price: f.maxPrice, min_power: f.minPower, operational: f.operational === "true",
     }, { count: "exact" });
     if (safeQuery) catalog = catalog.or(`name.ilike.*${safeQuery}*,address.ilike.*${safeQuery}*,city.ilike.*${safeQuery}*,state.ilike.*${safeQuery}*,zip.ilike.*${safeQuery}*`);
     const sort = searchParams.get("sort");
+    if (sort === "price") catalog = catalog.not("community_price_per_kwh", "is", null);
     catalog = sort === "price"
       ? catalog.order("community_price_per_kwh", { ascending: true, nullsFirst: false }).order("name").order("id")
       : catalog.order("name").order("id");

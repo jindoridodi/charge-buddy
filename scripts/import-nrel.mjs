@@ -35,9 +35,14 @@ while (true) {
 
 if (!importedSourceIds.size) throw new Error("NREL returned no valid stations; refusing to mark existing catalog entries unavailable.");
 
-const { data: existingRows, error: existingError } = await supabase.from("chargers").select("id, source_external_id").eq("source", "nrel");
-if (existingError) throw existingError;
-const staleIds = (existingRows ?? []).filter((row) => !row.source_external_id || !importedSourceIds.has(row.source_external_id)).map((row) => row.id);
+const staleIds = [];
+for (let offset = 0; ; ) {
+  const { data: rows, error } = await supabase.from("chargers").select("id, source_external_id").eq("source", "nrel").order("id").range(offset, offset + 99);
+  if (error) throw error;
+  if (!rows?.length) break;
+  staleIds.push(...rows.filter((row) => !row.source_external_id || !importedSourceIds.has(row.source_external_id)).map((row) => row.id));
+  offset += rows.length;
+}
 for (let start = 0; start < staleIds.length; start += 1000) {
   const { error } = await supabase.from("chargers").update({ public_access: false, availability_status: "unavailable", imported_at: new Date().toISOString() }).in("id", staleIds.slice(start, start + 1000));
   if (error) throw error;

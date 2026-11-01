@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createTrip } from "@/lib/server/trips";
 import { limitTripRequest } from "@/lib/server/rate-limit";
 import { vehicleById } from "@/lib/trips/vehicles";
+import { RoutingLocationError } from "@/lib/server/providers/valhalla";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
     if (!vehicle) return Response.json({ error: "Unknown planning vehicle", code: "VALIDATION_ERROR" }, { status: 400 });
     return Response.json(await createTrip(request, parsed.data.origin, parsed.data.destination, vehicle, parsed.data.startSocPercent, parsed.data.reserveSocPercent, parsed.data.objective, parsed.data.maxDetourMiles));
   } catch (error) {
+    if (error instanceof RoutingLocationError) return Response.json({ outcome: "invalid_location", error: error.message, code: `ROUTING_${error.code}` }, { status: 422 });
     const message = error instanceof Error ? error.message : "TRIP_UNAVAILABLE";
     return Response.json({ outcome: "provider_unavailable", error: "Routing is unavailable. Configure the self-hosted Valhalla service and charger catalog.", code: message }, { status: 503 });
   }
