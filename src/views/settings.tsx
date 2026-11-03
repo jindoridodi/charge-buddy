@@ -25,7 +25,7 @@ export default function Page() {
 
   const addVehicle = () => {
     if (!nv.make || !nv.model) { toast.error("Enter make and model"); return; }
-    const v: Vehicle = { ...nv, id: `v${Date.now()}`, nickname: nv.nickname || `${nv.make} ${nv.model}` };
+    const v: Vehicle = { ...nv, id: crypto.randomUUID(), nickname: nv.nickname || `${nv.make} ${nv.model}` };
     app.set((st) => ({ vehicles: [...st.vehicles, v] }));
     setNv({ ...nv, nickname: "", make: "", model: "" });
     toast.success("Vehicle added");
@@ -88,10 +88,6 @@ export default function Page() {
           ))}
         </Card>
 
-        <Card title="Demo data">
-          <p className="text-sm text-muted-foreground">Everything is stored in this browser only. Reset to restore the sample data.</p>
-          <Button variant="destructive" onClick={() => { app.reset(); toast("Demo data reset"); }}>Reset demo data</Button>
-        </Card>
       </Section>
     </div>
   );

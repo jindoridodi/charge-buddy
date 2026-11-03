@@ -12,6 +12,8 @@ import {
   type Reservation,
   type Vehicle,
 } from "./data";
+import { getBrowserSupabase } from "./supabase/client";
+import { loadAccount as loadAccountData, saveAccount } from "./client/account";
 
 export interface User {
   id: string;
@@ -79,29 +81,74 @@ type Ctx = State & {
 };
 
 const AppCtx = createContext<Ctx | null>(null);
-const KEY = "charge-buddy-state-v1";
-
 export function stateForSession(user: User): State {
-  return { ...initial, user, role: user.purpose === "host" ? "host" : "driver" };
+  return { ...initial, user, role: user.purpose === "host" ? "host" : "driver", favorites: [], vehicles: [], defaultVehicleId: "", reservations: [], listings: [], hostBookings: [], compare: [] };
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(initial);
-  const loaded = useRef(false);
+  const hydratedFor = useRef<string | null>(null);
+
+  const userFromSession = (user: { id: string; email?: string; user_metadata: Record<string, unknown> }): User => ({
+    id: user.id,
+    name: typeof user.user_metadata["full_name"] === "string" ? user.user_metadata["full_name"] : user.email?.split("@")[0] ?? "Member",
+    email: user.email ?? "",
+    phone: "",
+    purpose: user.user_metadata["purpose"] === "host" || user.user_metadata["purpose"] === "both" ? user.user_metadata["purpose"] : "driver",
+  });
+
+  const loadAccount = async (user: User) => {
+    try {
+      const { data: { session } } = await getBrowserSupabase().auth.getSession();
+      if (!session || session.user.id !== user.id) return;
+      const account = await loadAccountData(session.access_token);
+      if (!account) return;
+      setState((current) => current.user?.id !== user.id ? current : {
+        ...stateForSession(user),
+        favorites: account.favorites,
+        vehicles: account.vehicles,
+        defaultVehicleId: account.defaultVehicleId ?? "",
+        settings: account.settings ?? initial.settings,
+      });
+    } catch {
+      // Keeping an empty account state is safer than retaining another Account's data.
+    } finally {
+      hydratedFor.current = user.id;
+    }
+  };
+
+  const startSession = (user: User) => {
+    hydratedFor.current = null;
+    setState(stateForSession(user));
+    void loadAccount(user);
+  };
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) setState({ ...initial, ...JSON.parse(raw) });
-    } catch {
-      /* ignore */
-    }
-    loaded.current = true;
+      const supabase = getBrowserSupabase();
+      void supabase.auth.getSession().then(({ data: { session } }) => { if (session) startSession(userFromSession(session.user)); });
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_OUT") { hydratedFor.current = null; setState(initial); }
+        if (event === "SIGNED_IN" && session) startSession(userFromSession(session.user));
+      });
+      return () => subscription.unsubscribe();
+    } catch { return; }
   }, []);
 
   useEffect(() => {
-    if (loaded.current) localStorage.setItem(KEY, JSON.stringify(state));
     document.documentElement.classList.toggle("dark", state.settings.theme === "dark");
+  }, [state]);
+
+  useEffect(() => {
+    if (!state.user || hydratedFor.current !== state.user.id) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data: { session } } = await getBrowserSupabase().auth.getSession();
+        if (!session || session.user.id !== state.user?.id) return;
+        await saveAccount(session.access_token, { favorites: state.favorites, vehicles: state.vehicles, defaultVehicleId: state.defaultVehicleId || null, settings: state.settings });
+      } catch { /* Saving will retry after the next account change. */ }
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [state]);
 
   const value = useMemo<Ctx>(() => {
@@ -127,8 +174,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ? s.compare
               : [...s.compare, id],
         })),
-      reset: () => setState(initial),
-      startSession: (user) => setState(stateForSession(user)),
+      reset: () => { hydratedFor.current = null; setState(initial); },
+      startSession,
     };
   }, [state]);
 
