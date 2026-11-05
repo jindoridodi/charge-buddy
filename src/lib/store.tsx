@@ -70,6 +70,7 @@ const initial: State = {
 };
 
 type Ctx = State & {
+  accountReady: boolean;
   set: (patch: Partial<State> | ((s: State) => Partial<State>)) => void;
   allChargers: Charger[];
   getCharger: (id: string) => Charger | undefined;
@@ -87,7 +88,9 @@ export function stateForSession(user: User): State {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(initial);
+  const [accountReady, setAccountReady] = useState(false);
   const hydratedFor = useRef<string | null>(null);
+  const loadingFor = useRef<string | null>(null);
 
   const userFromSession = (user: { id: string; email?: string; user_metadata: Record<string, unknown> }): User => ({
     id: user.id,
@@ -114,11 +117,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Keeping an empty account state is safer than retaining another Account's data.
     } finally {
       hydratedFor.current = user.id;
+      if (loadingFor.current === user.id) setAccountReady(true);
     }
   };
 
   const startSession = (user: User) => {
     hydratedFor.current = null;
+    loadingFor.current = user.id;
+    setAccountReady(false);
     setState(stateForSession(user));
     void loadAccount(user);
   };
@@ -126,13 +132,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const supabase = getBrowserSupabase();
-      void supabase.auth.getSession().then(({ data: { session } }) => { if (session) startSession(userFromSession(session.user)); });
+      void supabase.auth.getSession().then(({ data: { session } }) => { if (session) startSession(userFromSession(session.user)); else setAccountReady(true); }).catch(() => setAccountReady(true));
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_OUT") { hydratedFor.current = null; setState(initial); }
+        if (event === "SIGNED_OUT") { hydratedFor.current = null; loadingFor.current = null; setAccountReady(true); setState(initial); }
         if (event === "SIGNED_IN" && session) startSession(userFromSession(session.user));
       });
       return () => subscription.unsubscribe();
-    } catch { return; }
+    } catch { setAccountReady(true); return; }
   }, []);
 
   useEffect(() => {
@@ -158,6 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) }));
     return {
       ...state,
+      accountReady,
       set,
       allChargers,
       getCharger: (id) => state.listings.find((c) => c.id === id) ?? MOCK_CHARGERS.find((c) => c.id === id),
@@ -174,10 +181,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ? s.compare
               : [...s.compare, id],
         })),
-      reset: () => { hydratedFor.current = null; setState(initial); },
+      reset: () => { hydratedFor.current = null; loadingFor.current = null; setAccountReady(true); setState(initial); },
       startSession,
     };
-  }, [state]);
+  }, [state, accountReady]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }
