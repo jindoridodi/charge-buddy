@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -9,7 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader, Section } from "@/components/PageHeader";
 import { ChargerCard } from "@/components/ChargerCard";
+import { CatalogChargerCard } from "@/components/CatalogChargerCard";
 import { EARNINGS_HISTORY, money } from "@/lib/data";
+import type { CatalogCharger } from "@/lib/catalog/types";
 import { useApp } from "@/lib/store";
 
 function Stat({ k, v }: { k: string; v: string }) {
@@ -19,6 +22,7 @@ function Stat({ k, v }: { k: string; v: string }) {
 export default function Page() {
   const app = useApp();
   const { role, set } = app;
+  const [catalogFavorites, setCatalogFavorites] = useState<CatalogCharger[]>([]);
   const completed = app.reservations.filter((r) => r.status === "Completed");
   const spent = completed.reduce((s, r) => s + r.total, 0);
   const kwh = completed.reduce((s, r) => s + r.kwh, 0);
@@ -29,6 +33,21 @@ export default function Page() {
     set((s) => ({ hostBookings: s.hostBookings.map((b) => (b.id === id ? { ...b, status } : b)) }));
     toast.success(`Booking ${status.toLowerCase()}`);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const catalogIds = app.favorites.filter((id) => !app.getCharger(id));
+    void Promise.all(catalogIds.map(async (id) => {
+      try {
+        const response = await fetch(`/api/chargers/${encodeURIComponent(id)}`);
+        if (!response.ok) return null;
+        return (await response.json() as { charger: CatalogCharger }).charger;
+      } catch { return null; }
+    })).then((chargers) => {
+      if (!cancelled) setCatalogFavorites(chargers.filter((charger): charger is CatalogCharger => charger !== null));
+    });
+    return () => { cancelled = true; };
+  }, [app.favorites, app.listings]);
 
   return (
     <div>
@@ -74,6 +93,7 @@ export default function Page() {
                 </TabsContent>
               ))}
               <TabsContent value="favorites" className="space-y-3">
+                {catalogFavorites.map((c) => <CatalogChargerCard key={c.id} charger={c} />)}
                 {app.favorites.map(app.getCharger).map((c) => c && <ChargerCard key={c.id} charger={c} />)}
                 {!app.favorites.length && <p className="text-muted-foreground">No favorites yet.</p>}
               </TabsContent>

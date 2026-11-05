@@ -156,6 +156,29 @@ test("public discovery includes a charger after its price becomes more than fift
   await page.getByText(charger.name, { exact: true }).waitFor();
 });
 
+test("public discovery lets a charger be saved as a favorite", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === `/api/chargers/${id}`) return route.fulfill({ json: { charger: { ...charger, latitude: 42.36, longitude: -71.06 }, reports: [] } });
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [{ ...charger, latitude: 42.36, longitude: -71.06 }], total: 1 } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  const favorite = page.locator(`#card-${id}`).getByRole("button", { name: "Favorite", exact: true });
+  await favorite.waitFor();
+  assert.equal(await favorite.getAttribute("aria-pressed"), "false");
+  await favorite.click();
+  assert.equal(await favorite.getAttribute("aria-pressed"), "true");
+  await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("tab", { name: "Favorites", exact: true }).click();
+  await page.getByText(charger.name, { exact: true }).waitFor();
+});
+
 test("changing any planning input invalidates the completed trip", async (t) => {
   const page = await tripPage(t);
   const changes = [

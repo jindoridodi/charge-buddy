@@ -7,5 +7,5 @@ test("a new session starts without the prior account's favorites or reservations
 
   assert.deepEqual(state.favorites, []);
   assert.equal(state.user?.id, "user-2");
-  assert.equal(state.reservations.length, 4);
+  assert.equal(state.reservations.length, 0);
 });
