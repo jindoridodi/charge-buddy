@@ -164,6 +164,7 @@ test("public discovery lets a charger be saved as a favorite", async (t) => {
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) return route.abort();
+    if (url.pathname === `/api/chargers/${id}`) return route.fulfill({ json: { charger: { ...charger, latitude: 42.36, longitude: -71.06 }, reports: [] } });
     if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [{ ...charger, latitude: 42.36, longitude: -71.06 }], total: 1 } });
     return route.continue();
   });
@@ -173,6 +174,9 @@ test("public discovery lets a charger be saved as a favorite", async (t) => {
   assert.equal(await favorite.getAttribute("aria-pressed"), "false");
   await favorite.click();
   assert.equal(await favorite.getAttribute("aria-pressed"), "true");
+  await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("tab", { name: "Favorites", exact: true }).click();
+  await page.getByText(charger.name, { exact: true }).waitFor();
 });
 
 test("changing any planning input invalidates the completed trip", async (t) => {
