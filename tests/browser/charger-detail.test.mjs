@@ -270,3 +270,29 @@ test("editing cancels pending geocoding and clears errors before the next plan",
     await page.getByText("Current provider failure", { exact: true }).waitFor({ state: "hidden" });
   } finally { release(); }
 });
+
+test("vehicle form rejects invalid account data and accepts valid values", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await page.goto(`${origin}/settings`);
+  await page.getByLabel("Make", { exact: true }).fill("Test");
+  await page.getByLabel("Model", { exact: true }).fill("EV");
+  for (const [label, value] of [["Year", "1800"], ["Year", "2024.5"], ["Battery (kWh)", "0"], ["Efficiency (mi/kWh)", "-1"]]) {
+    const input = page.getByLabel(label, { exact: true });
+    const original = await input.inputValue();
+    await input.fill(value);
+    await page.getByRole("button", { name: "Add vehicle" }).click();
+    assert.equal(await page.getByText("Test EV", { exact: true }).count(), 0);
+    await input.fill(original);
+  }
+  await page.getByRole("button", { name: "Add vehicle" }).click();
+  assert.equal(await page.getByText("Test EV", { exact: true }).count(), 1);
+  while (await page.getByRole("button", { name: "Remove", exact: true }).count()) {
+    await page.getByRole("button", { name: "Remove", exact: true }).first().click();
+  }
+  await page.getByLabel("Make", { exact: true }).fill("Test");
+  await page.getByLabel("Model", { exact: true }).fill("EV");
+  await page.getByRole("button", { name: "Add vehicle" }).click();
+  assert.equal(await page.getByText("Default", { exact: true }).count(), 1);
+});

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { PayloadTooLargeError, requestJson } from "@/lib/server/request-json";
 import { requireUser } from "@/lib/supabase/server";
+import { vehicleSchema } from "@/lib/vehicle-schema";
 
 const connector = z.enum(["J1772", "CCS", "NACS", "CHAdeMO"]);
 const schema = z.object({
   revision: z.number().int().nonnegative(),
   favorites: z.array(z.string().min(1).max(100)).max(100),
-  vehicles: z.array(z.object({ id: z.string().uuid(), nickname: z.string().trim().min(1).max(100), make: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(100), year: z.number().int().min(1886).max(2100), batteryKwh: z.number().finite().positive(), efficiency: z.number().finite().positive(), connector })).max(20),
+  vehicles: z.array(vehicleSchema).max(20),
   defaultVehicleId: z.string().uuid().nullable(),
   settings: z.object({ connectors: z.array(connector).max(4), maxDistance: z.number().finite().min(1).max(30), units: z.enum(["mi", "km"]), notifyEmail: z.boolean(), notifyPush: z.boolean(), notifyBookings: z.boolean(), defaultMargin: z.number().finite().min(0).max(100), theme: z.enum(["light", "dark"]) }),
 }).superRefine((value, context) => {
