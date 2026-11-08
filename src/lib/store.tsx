@@ -43,6 +43,9 @@ interface State {
   listings: Charger[];
   hostBookings: HostBooking[];
   compare: string[];
+  quoteOrigin: { lat: number; lng: number } | null;
+  quoteEnergy: number;
+  quoteVehicleId: string;
   settings: Settings;
 }
 
@@ -56,6 +59,9 @@ const initial: State = {
   listings: [],
   hostBookings: MOCK_HOST_BOOKINGS,
   compare: [],
+  quoteOrigin: null,
+  quoteEnergy: 30,
+  quoteVehicleId: "",
   settings: {
     connectors: [],
     maxDistance: 15,

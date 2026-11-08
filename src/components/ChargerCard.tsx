@@ -22,7 +22,7 @@ export function ChargerCard({
   charger,
   active,
   onHover,
-  kwh = 30,
+  kwh,
   bestValue,
   origin = USER_LOC,
 }: {
@@ -33,9 +33,11 @@ export function ChargerCard({
   bestValue?: boolean;
   origin?: Coordinates | null;
 }) {
-  const { favorites, toggleFavorite, defaultVehicle, compare, toggleCompare } = useApp();
+  const { favorites, toggleFavorite, defaultVehicle, compare, toggleCompare, quoteEnergy, quoteVehicleId, vehicles } = useApp();
+  const energy = kwh ?? quoteEnergy;
+  const vehicle = vehicles.find((v) => v.id === quoteVehicleId) ?? defaultVehicle;
   const fav = favorites.includes(charger.id);
-  const cost = estimateCost(charger, kwh, defaultVehicle?.efficiency ?? 3.5, origin ? distanceMiles(origin, charger) : 0);
+  const cost = estimateCost(charger, energy, vehicle?.efficiency ?? 3.5, origin ? distanceMiles(origin, charger) : 0);
   const inCompare = compare.includes(charger.id);
   const incompatible = defaultVehicle && defaultVehicle.connector !== charger.connector;
 
@@ -74,7 +76,7 @@ export function ChargerCard({
         <div className="flex items-end justify-between pt-1">
           <div>
             <p className="text-lg font-bold">{money(charger.pricePerKwh)}<span className="text-xs font-normal text-muted-foreground">/kWh</span></p>
-            <p className="text-xs text-muted-foreground">+{money(charger.hostFee)} fee · est. {money(cost.total)} for {kwh} kWh{!origin && " (excludes travel)"}</p>
+            <p className="text-xs text-muted-foreground">+{money(charger.hostFee)} fee · est. {money(cost.total)} for {energy} kWh{!origin && " (excludes travel)"}</p>
           </div>
           <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
             <input type="checkbox" checked={inCompare} onChange={() => toggleCompare(charger.id)} className="accent-primary" />

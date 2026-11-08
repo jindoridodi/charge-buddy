@@ -54,7 +54,6 @@ export async function GET(request: NextRequest) {
     }, { count: "exact" });
     if (safeQuery) catalog = catalog.or(`name.ilike.*${safeQuery}*,address.ilike.*${safeQuery}*,city.ilike.*${safeQuery}*,state.ilike.*${safeQuery}*,zip.ilike.*${safeQuery}*`);
     const sort = searchParams.get("sort");
-    if (sort === "price") catalog = catalog.not("community_price_per_kwh", "is", null);
     catalog = sort === "price"
       ? catalog.order("community_price_per_kwh", { ascending: true, nullsFirst: false }).order("name").order("id")
       : catalog.order("name").order("id");

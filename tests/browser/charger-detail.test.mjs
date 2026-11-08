@@ -315,3 +315,33 @@ test("vehicle form rejects invalid account data and accepts valid values", async
   await page.getByRole("button", { name: "Add vehicle" }).click();
   assert.equal(await page.getByText("Default", { exact: true }).count(), 1);
 });
+
+test("public quotes stay consistent across discovery, detail and comparison", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  const priced = { ...charger, latitude: 37, longitude: -122, price_summary: { status: "community", price_per_kwh: 0.5, observed_at: "2026-11-01" } };
+  const unknown = { ...priced, id: "unknown", name: "Unknown station", price_summary: { status: "unknown", price_per_kwh: null, observed_at: null } };
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/locations") return route.fulfill({ json: { places: [{ label: "Origin", location: { lat: 37, lng: -122 } }] } });
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [priced, unknown], total: 2 } });
+    if (url.pathname.startsWith("/api/chargers/")) return route.fulfill({ json: { charger: url.pathname.endsWith("unknown") ? unknown : priced, reports: [] } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByLabel("Search location").fill("Origin");
+  await page.getByRole("button", { name: "Set location" }).click();
+  await page.getByLabel("Requested energy (kWh)").fill("20");
+  await page.getByText("Estimated total: $10.00", { exact: true }).waitFor();
+  await page.getByRole("checkbox", { name: "Compare Public test station" }).check();
+  await page.getByRole("checkbox", { name: "Compare Unknown station" }).check();
+  await page.getByRole("link", { name: /Compare \(2\)/ }).click();
+  await page.getByText("$10.00", { exact: true }).waitFor();
+  await page.getByText("Lowest estimated cost", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Lowest estimated cost", { exact: true }).count(), 1);
+  await page.getByRole("link", { name: "Public test station" }).click();
+  await page.getByText("Estimated total: $10.00", { exact: true }).waitFor();
+});
