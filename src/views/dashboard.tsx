@@ -26,7 +26,8 @@ export default function Page() {
   const [peerListings, setPeerListings] = useState<PeerListing[]>([]);
   const [listingError, setListingError] = useState("");
   useEffect(() => {
-    if (!app.user) { setPeerListings([]); return; }
+    setPeerListings([]); setListingError("");
+    if (!app.user) return;
     let cancelled = false;
     void listingsRequest("GET").then(({ listings }) => { if (!cancelled) setPeerListings(listings); }).catch(() => { if (!cancelled) setListingError("Could not load listings."); });
     return () => { cancelled = true; };
