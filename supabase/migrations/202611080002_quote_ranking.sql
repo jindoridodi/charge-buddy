@@ -10,7 +10,7 @@ as $$
 begin
   return query
   select c.* from public.search_catalog(origin_lat, origin_lng, radius_miles, connectors, levels, max_price, min_power, operational) c
-  order by (c.community_price_per_kwh * requested_kwh +
+  order by (c.effective_price_per_kwh * requested_kwh +
     case when origin_lat is null then 0 else
       2 * 3958.8 * asin(sqrt(least(1,
         power(sin(radians(c.latitude - origin_lat) / 2), 2) +

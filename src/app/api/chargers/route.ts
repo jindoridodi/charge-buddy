@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       ...(sort === "cost" ? { requested_kwh: f.kwh, efficiency: f.efficiency } : {}),
     }, { count: "exact" });
     if (safeQuery) catalog = catalog.or(`name.ilike.*${safeQuery}*,address.ilike.*${safeQuery}*,city.ilike.*${safeQuery}*,state.ilike.*${safeQuery}*,zip.ilike.*${safeQuery}*`);
-    if (sort === "price") catalog = catalog.order("community_price_per_kwh", { ascending: true, nullsFirst: false }).order("name").order("id");
+    if (sort === "price") catalog = catalog.order("effective_price_per_kwh", { ascending: true, nullsFirst: false }).order("name").order("id");
     else if (sort !== "cost") catalog = catalog.order("name").order("id");
     const { data, error, count } = await catalog.range((page - 1) * limit, page * limit - 1);
     if (error) throw error;

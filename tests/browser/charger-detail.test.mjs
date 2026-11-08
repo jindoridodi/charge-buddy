@@ -377,3 +377,17 @@ test("failed map tiles leave the mobile list and comparison usable", async (t) =
   await page.getByRole("link", { name: /Compare \(2\)/ }).click();
   await page.getByRole("link", { name: "Second station" }).waitFor();
 });
+test("listing form requires a signed-in account before publishing", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(`${origin}/list-charger`);
+  await page.getByLabel("Listing name").fill("Neighborhood charger");
+  await page.getByLabel("Street address").fill("123 Secret Street");
+  await page.getByLabel("City and state").fill("Boston, MA");
+  await page.getByRole("button", { name: "Save listing" }).click();
+  await page.locator("p[role=alert]").waitFor();
+  assert.match(await page.locator("p[role=alert]").innerText(), /sign in|supabase is not configured/i);
+});
