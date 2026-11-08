@@ -21,7 +21,7 @@ import type { Coordinates } from "@/lib/trips/types";
 
 const SORTS = {
   name: "Name (A–Z)",
-  price: "Lowest electricity price",
+  cost: "Lowest estimated cost",
 } as const;
 
 export default function FindChargers({ q = "" }: { q?: string }) {
@@ -74,13 +74,14 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     return () => controller.abort();
   }, [locationSearch]);
 
-  useEffect(() => { setPage(1); }, [query, origin, locationSearch, radius, connectors, levels, maxPrice, minPower, time, sort]);
+  useEffect(() => { setPage(1); }, [query, origin, locationSearch, radius, connectors, levels, maxPrice, minPower, time, sort, quoteEnergy, quoteVehicleId, vehicles]);
 
   useEffect(() => {
     if (locationBusy || (locationSearch.query && !origin)) { setLoading(false); return; }
     const controller = new AbortController();
     const params = new URLSearchParams({ limit: "100", page: String(page), sort,
       q: query.trim(), radius: String(radius), maxPrice: String(maxPrice), minPower: String(minPower),
+      kwh: String(quoteEnergy), efficiency: String(vehicles.find((v) => v.id === quoteVehicleId)?.efficiency ?? vehicles[0]?.efficiency ?? 3.5),
       connectors: connectors.join(","), levels: levels.join(","), operational: String(time === "operational"),
       ...(origin ? { lat: String(origin.lat), lng: String(origin.lng) } : {}),
     });
@@ -94,7 +95,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       if (!controller.signal.aborted) setCatalogError(error instanceof Error ? error.message : "Could not load public catalog");
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); }), 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationSearch, retry]);
+  }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationSearch, retry, quoteEnergy, quoteVehicleId, vehicles]);
 
   const localListings = useMemo(() => locationSearch.query && !origin ? [] : filterLocalListings(listings, {
     query, origin, radius, connectors, levels, maxPrice, minPower, operational: time === "operational",
@@ -179,7 +180,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div className={`w-full overflow-y-auto p-4 lg:w-[52%] ${mobileMap ? "hidden lg:block" : ""}`}>
-          <p className="mb-3 text-sm text-muted-foreground">{catalog.length} of {total} public chargers · community prices determine price ranking</p>
+          <p className="mb-3 text-sm text-muted-foreground">{catalog.length} of {total} public chargers · community prices determine estimated costs</p>
           <div className="space-y-3">
             {catalog.map((c) => <div id={`card-${c.id}`} key={c.id}><CatalogChargerCard charger={c} active={active === c.id} onHover={setActive} /></div>)}
             {catalogError && <p role="alert" className="text-sm text-destructive">{catalogError}</p>}

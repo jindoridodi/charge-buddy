@@ -17,6 +17,6 @@ class MapBoundary extends Component<{ children: ReactNode; onError?: (() => void
 }
 
 export function MapView({ onError, ...props }: MapViewProps & { onError?: () => void }) {
-  return <MapBoundary onError={onError}><Inner {...props} /></MapBoundary>;
+  return <MapBoundary onError={onError}><Inner {...props} onError={onError} /></MapBoundary>;
 }
 

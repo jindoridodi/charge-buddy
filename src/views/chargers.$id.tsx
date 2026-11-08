@@ -113,7 +113,7 @@ export default function ChargerDetail() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-3xl font-bold">{c.name}</h1>
-              <p className="mt-1 flex items-center gap-1 text-muted-foreground"><MapPin className="h-4 w-4" />{c.address} · {cost.distance.toFixed(1)} mi away</p>
+              <p className="mt-1 flex items-center gap-1 text-muted-foreground"><MapPin className="h-4 w-4" />{c.address}{app.quoteOrigin && ` · ${cost.distance.toFixed(1)} mi away`}</p>
               <p className="mt-1 flex items-center gap-2 text-sm"><Star className="h-4 w-4 fill-warning text-warning" />{c.rating} ({c.reviewCount} reviews) <StatusBadge status={c.status} /></p>
             </div>
             <div className="flex gap-2">
@@ -166,7 +166,7 @@ export default function ChargerDetail() {
           <div className="space-y-1 border-t pt-3 text-sm">
             <Row k={`Electricity (${kwh} kWh)`} v={money(cost.electricity)} />
             <Row k="Host fee" v={money(cost.hostFee)} />
-            <Row k={`Travel (${(cost.distance * 2).toFixed(1)} mi round trip)`} v={money(cost.travel)} />
+            <Row k={app.quoteOrigin ? `Travel (${(cost.distance * 2).toFixed(1)} mi round trip)` : "Travel (set an origin)"} v={app.quoteOrigin ? money(cost.travel) : "Not included"} />
             <div className="flex justify-between pt-2 text-base font-bold"><span>Estimated total</span><span>{money(cost.total)}</span></div>
           </div>
           <Button className="w-full" size="lg" disabled={c.status === "Offline"} onClick={book}><Zap className="h-4 w-4" />{c.status === "Offline" ? "Currently offline" : "Reserve charger"}</Button>

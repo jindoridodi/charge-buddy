@@ -326,7 +326,7 @@ test("public quotes stay consistent across discovery, detail and comparison", as
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) return route.abort();
-    if (url.pathname === "/api/locations") return route.fulfill({ json: { places: [{ label: "Origin", location: { lat: 37, lng: -122 } }] } });
+    if (url.pathname === "/api/locations") return route.fulfill({ json: { places: [{ label: "Origin", location: { lat: url.searchParams.get("q") === "Far" ? 37.1 : 37, lng: -122 } }] } });
     if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [priced, unknown], total: 2 } });
     if (url.pathname.startsWith("/api/chargers/")) return route.fulfill({ json: { charger: url.pathname.endsWith("unknown") ? unknown : priced, reports: [] } });
     return route.continue();
@@ -336,12 +336,44 @@ test("public quotes stay consistent across discovery, detail and comparison", as
   await page.getByRole("button", { name: "Set location" }).click();
   await page.getByLabel("Requested energy (kWh)").fill("20");
   await page.getByText("Estimated total: $10.00", { exact: true }).waitFor();
+  await page.getByLabel("Search location").fill("Far");
+  await page.getByRole("button", { name: "Set location" }).click();
+  const pricedCard = page.locator(`#card-${id}`);
+  await pricedCard.getByText(/Estimated total: \$11\./).waitFor();
+  const firstQuote = await pricedCard.getByText(/Estimated total:/).innerText();
+  await page.getByLabel("Quote vehicle").selectOption("v2");
+  await page.waitForFunction(({ id, firstQuote }) => document.querySelector(`#card-${id}`)?.textContent?.includes(firstQuote) === false, { id, firstQuote });
+  const changedQuote = await pricedCard.getByText(/Estimated total:/).innerText();
+  assert.notEqual(changedQuote, firstQuote);
+  const amount = changedQuote.match(/\$[\d.]+/)[0];
   await page.getByRole("checkbox", { name: "Compare Public test station" }).check();
   await page.getByRole("checkbox", { name: "Compare Unknown station" }).check();
   await page.getByRole("link", { name: /Compare \(2\)/ }).click();
-  await page.getByText("$10.00", { exact: true }).waitFor();
+  await page.getByText(amount, { exact: true }).waitFor();
   await page.getByText("Lowest estimated cost", { exact: true }).waitFor();
   assert.equal(await page.getByText("Lowest estimated cost", { exact: true }).count(), 1);
   await page.getByRole("link", { name: "Public test station" }).click();
-  await page.getByText("Estimated total: $10.00", { exact: true }).waitFor();
+  await page.getByText(`Estimated total: ${amount}`, { exact: true }).waitFor();
+});
+
+test("failed map tiles leave the mobile list and comparison usable", async (t) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(5000);
+  const first = { ...charger, latitude: 37, longitude: -122 };
+  const second = { ...first, id: "second", name: "Second station" };
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [first, second], total: 2 } });
+    if (url.pathname.startsWith("/api/chargers/")) return route.fulfill({ json: { charger: url.pathname.endsWith("second") ? second : first, reports: [] } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByText("Map unavailable. Use the charger list.", { exact: true }).waitFor();
+  await page.getByRole("checkbox", { name: "Compare Public test station" }).check();
+  await page.getByRole("checkbox", { name: "Compare Second station" }).check();
+  await page.getByRole("link", { name: /Compare \(2\)/ }).click();
+  await page.getByRole("link", { name: "Second station" }).waitFor();
 });
