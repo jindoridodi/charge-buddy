@@ -17,7 +17,7 @@ export function runUnitTests(files, run = runTestFile) {
     const result = run(file);
     process.stdout.write(result.stdout ?? "");
     process.stderr.write(result.stderr ?? "");
-    return result.status !== 0 || !summary.test(`${result.stdout ?? ""}${result.stderr ?? ""}`);
+    return result.status !== 0 || !(summary.test(result.stdout ?? "") || summary.test(result.stderr ?? ""));
   });
 }
 

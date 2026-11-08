@@ -11,6 +11,16 @@ test("rejects a child that exits zero without a final test summary", () => {
   assert.deepEqual(failures, ["incomplete.test.ts"]);
 });
 
+test("accepts a completed child that writes a warning to stderr", () => {
+  const fixture = fileURLToPath(new URL("./fixtures/unit-test-runner/complete-child.mjs", import.meta.url));
+  const failures = runUnitTests(["complete.test.ts"], () => {
+    const result = spawnSync(process.execPath, [fixture], { encoding: "utf8" });
+    return { ...result, stderr: "Warning: example\n" };
+  });
+
+  assert.deepEqual(failures, []);
+});
+
 test("runs remaining files after an incomplete child", () => {
   const incomplete = fileURLToPath(new URL("./fixtures/unit-test-runner/incomplete-child.mjs", import.meta.url));
   const complete = fileURLToPath(new URL("./fixtures/unit-test-runner/complete-child.mjs", import.meta.url));
