@@ -13,8 +13,6 @@ import { CONNECTORS, LEVELS } from "@/lib/data";
 import { useApp } from "@/lib/store";
 import type { CatalogCharger } from "@/lib/catalog/types";
 import { CatalogChargerCard } from "@/components/CatalogChargerCard";
-import { ChargerCard } from "@/components/ChargerCard";
-import { filterLocalListings } from "@/lib/catalog/local-listings";
 import type { Coordinates } from "@/lib/trips/types";
 
 
@@ -24,7 +22,7 @@ const SORTS = {
 } as const;
 
 export default function FindChargers({ q = "" }: { q?: string }) {
-  const { compare, settings, listings } = useApp();
+  const { compare, settings } = useApp();
   const [catalog, setCatalog] = useState<CatalogCharger[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -93,13 +91,9 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationSearch, retry]);
 
-  const localListings = useMemo(() => locationSearch.query && !origin ? [] : filterLocalListings(listings, {
-    query, origin, radius, connectors, levels, maxPrice, minPower, operational: time === "operational",
-  }), [listings, query, origin, radius, connectors, levels, maxPrice, minPower, time, locationSearch]);
   const markers = useMemo(() => [
     ...catalog.map((charger) => ({ id: charger.id, lat: charger.latitude, lng: charger.longitude, label: charger.price_summary?.price_per_kwh != null ? `$${charger.price_summary.price_per_kwh.toFixed(2)}` : "?" })),
-    ...localListings.map((charger) => ({ id: charger.id, lat: charger.lat, lng: charger.lng, label: `$${charger.pricePerKwh.toFixed(2)}`, mine: true })),
-  ], [catalog, localListings]);
+  ], [catalog]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const select = (id: string) => {
@@ -180,7 +174,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
             {catalogError && <p role="alert" className="text-sm text-destructive">{catalogError}</p>}
             {(catalogError || catalog.length < total) && <Button variant="outline" disabled={loading} onClick={() => catalogError ? setRetry((value) => value + 1) : setPage((value) => value + 1)}>{catalogError ? "Retry loading chargers" : "Load more chargers"}</Button>}
             {!catalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{locationBusy || loading ? "Loading chargers…" : locationError ?? catalogError ?? "No public chargers match these filters."}</div>}
-            {!!localListings.length && <><h2 className="pt-4 text-sm font-semibold">Local demo listings · stored only in this browser</h2>{localListings.map((charger) => <ChargerCard key={charger.id} charger={charger} origin={origin} active={active === charger.id} onHover={setActive} />)}</>}
+
           </div>
         </div>
         <div className={`flex-1 ${mobileMap ? "block" : "hidden lg:block"}`}>

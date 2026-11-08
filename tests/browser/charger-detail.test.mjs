@@ -315,3 +315,18 @@ test("vehicle form rejects invalid account data and accepts valid values", async
   await page.getByRole("button", { name: "Add vehicle" }).click();
   assert.equal(await page.getByText("Default", { exact: true }).count(), 1);
 });
+
+test("listing form requires a signed-in account before publishing", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await page.goto(`${origin}/list-charger`);
+  await page.getByLabel("Listing name").fill("Neighborhood charger");
+  await page.getByLabel("Street address").fill("123 Secret Street");
+  await page.getByLabel("City and state").fill("Boston, MA");
+  await page.getByRole("button", { name: "Save listing" }).click();
+  await page.locator("p[role=alert]").waitFor();
+  assert.match(await page.locator("p[role=alert]").innerText(), /sign in|supabase is not configured/i);
+});
+
