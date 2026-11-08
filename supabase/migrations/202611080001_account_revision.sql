@@ -1,7 +1,9 @@
 alter table public.account_preferences add column revision bigint not null default 0;
+alter function public.replace_account_data(text[], jsonb, uuid, text[], numeric, text, boolean, boolean, boolean, numeric, text) set search_path = public, pg_temp;
+revoke insert, update, delete on public.account_preferences, public.account_vehicles, public.account_favorites from public, anon, authenticated;
 
 create function public.read_account_data()
-returns jsonb language plpgsql security invoker set search_path = public as $$
+returns jsonb language plpgsql security invoker set search_path = public, pg_temp as $$
 declare account_id uuid := auth.uid(); result jsonb;
 begin
   if account_id is null then raise exception 'Authentication required'; end if;
@@ -22,7 +24,7 @@ create function public.save_account_data(
   p_connectors text[], p_max_distance numeric, p_units text,
   p_notify_email boolean, p_notify_push boolean, p_notify_bookings boolean,
   p_default_margin numeric, p_theme text
-) returns boolean language plpgsql security definer set search_path = public as $$
+) returns boolean language plpgsql security definer set search_path = public, pg_temp as $$
 declare account_id uuid := auth.uid(); current_revision bigint;
 begin
   if account_id is null then raise exception 'Authentication required'; end if;
