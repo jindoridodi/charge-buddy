@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { MapView } from "@/components/MapView";
 import { NativeSelect } from "@/components/PageHeader";
-import { CONNECTORS, LEVELS } from "@/lib/data";
+import { CONNECTORS, LEVELS, estimateCost, distanceMiles } from "@/lib/data";
 import { useApp } from "@/lib/store";
 import type { CatalogCharger } from "@/lib/catalog/types";
 import { CatalogChargerCard } from "@/components/CatalogChargerCard";
@@ -101,7 +101,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   }), [listings, query, origin, radius, connectors, levels, maxPrice, minPower, time, locationSearch]);
   const markers = useMemo(() => [
     ...catalog.map((charger) => ({ id: charger.id, lat: charger.latitude, lng: charger.longitude, label: (() => { const total = catalogQuote(charger, origin, quoteEnergy, vehicles.find((v) => v.id === quoteVehicleId)?.efficiency ?? vehicles[0]?.efficiency ?? 3.5).total; return total == null ? "?" : `$${total.toFixed(2)}`; })() })),
-    ...localListings.map((charger) => ({ id: charger.id, lat: charger.lat, lng: charger.lng, label: `$${charger.pricePerKwh.toFixed(2)}`, mine: true })),
+    ...localListings.map((charger) => ({ id: charger.id, lat: charger.lat, lng: charger.lng, label: `$${estimateCost(charger, quoteEnergy, vehicles.find((v) => v.id === quoteVehicleId)?.efficiency ?? vehicles[0]?.efficiency ?? 3.5, origin ? distanceMiles(origin, charger) : 0).total.toFixed(2)}`, mine: true })),
   ], [catalog, localListings, origin, quoteEnergy, quoteVehicleId, vehicles]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
