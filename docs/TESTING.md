@@ -20,7 +20,7 @@ Use `npm ci` for reproducible setup on a fresh checkout; it reinstalls dependenc
 
 `npm run typecheck` generates Next.js route types before running TypeScript, so it also works before the first production build on a fresh checkout.
 
-`npm run test:unit` runs catalog, Account-state, price-report, rate-limit, import, API, and trip-planner suites through Node's test runner and `tsx`. Run the original focused suites with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. API and import tests intercept only external HTTP calls with synthetic data; application logic is not mocked. The shared loader substitutes framework image imports and the `server-only` marker. These tests do not verify live providers or the complete browser acceptance path.
+`npm run test:unit` runs every top-level TypeScript test file separately through Node's test runner and `tsx`; a file must exit successfully and emit Node's final test summary. Run the original focused suites with `npm run test:catalog`, `test:account-state`, `test:reports`, `test:rate-limit`, or `test:trip`. API and import tests intercept only external HTTP calls with synthetic data; application logic is not mocked. The shared loader substitutes framework image imports and the `server-only` marker. These tests do not verify live providers or the complete browser acceptance path.
 
 `npm test` runs only `scripts/smoke-test.mjs`. It needs a fresh production build, chooses an available local port, and stops its own server afterward, including on assertion failure. It checks 12 HTTP route responses plus CSS and the hero image. Do not describe it as browser, API persistence, or end-to-end coverage.
 
