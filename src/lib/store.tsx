@@ -115,7 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadAccount = async (user: User, generation: number) => {
     try {
       const { data: { session } } = await getBrowserSupabase().auth.getSession();
-      if (!session || session.user.id !== user.id) return;
+      if (!session || session.user.id !== user.id) throw new Error("Session unavailable");
       const account = await loadAccountData(session.access_token);
       if (generation !== sessionGeneration.current) return;
       hydratedFor.current = user.id;
@@ -129,7 +129,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settings: account.settings ?? initial.settings,
       });
     } catch {
-      if (generation === sessionGeneration.current) toast.error("Could not load account data. Sign in again to retry.");
+      if (generation === sessionGeneration.current) {
+        loadingFor.current = null;
+        toast.error("Could not load account data.", { action: { label: "Retry", onClick: () => startSession(user) }, duration: Infinity });
+      }
     } finally {
       if (generation === sessionGeneration.current && hydratedFor.current === user.id) setAccountReady(true);
     }
@@ -162,6 +165,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", state.settings.theme === "dark");
   }, [state]);
+
+  useEffect(() => {
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      const current = currentState.current;
+      if (current.user && hydratedFor.current === current.user.id && JSON.stringify(snapshot(current)) !== savedSnapshot.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warnUnsaved);
+    return () => window.removeEventListener("beforeunload", warnUnsaved);
+  }, []);
 
   const flushAccount = () => {
     if (!accountReady) return Promise.resolve(true);

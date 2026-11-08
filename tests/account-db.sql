@@ -7,6 +7,16 @@ begin
   if public.save_account_data(0, array['stale'], '[]', null, '{}', 15, 'mi', true, true, true, 40, 'light') then raise exception 'stale save succeeded'; end if;
   if public.read_account_data()->'favorites' <> '["first"]'::jsonb then raise exception 'stale save changed data'; end if;
   begin
+    perform public.save_account_data(1, array[repeat('x', 101)], '[]', null, '{}', 15, 'mi', true, true, true, 40, 'light');
+    raise exception 'oversized favorite accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    perform public.save_account_data(1, '{}', '[]', null, array['invalid'], 15, 'mi', true, true, true, 40, 'light');
+    raise exception 'invalid connector accepted';
+  exception when check_violation then null;
+  end;
+  begin
     insert into public.account_favorites (user_id, charger_id) values (auth.uid(), 'bypass');
     raise exception 'direct write bypassed revision check';
   exception when insufficient_privilege then null;
