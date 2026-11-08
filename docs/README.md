@@ -10,7 +10,8 @@ Use this directory selectively. Source files, `package.json`, migrations, and te
 | Plan unfinished work or coordinate two developers | [Implementation steps](IMPLEMENTATION_STEPS.md) and [Team plan](TEAM_PLAN.md). |
 | Set up Supabase, import NREL data, or administer price reports | [Supabase and NREL setup](SUPABASE_SETUP.md). |
 | Run self-hosted routing/geocoding | [Infrastructure guide](../infra/README.md). |
-| Prepare a release or recovery workflow | [SDLC](SDLC.md) and [Testing](TESTING.md). |
+| Prepare a release or recovery workflow | [SDLC](SDLC.md), [Testing](TESTING.md), and [local acceptance and recovery](LOCAL_ACCEPTANCE.md). |
+| Continue the nationwide core release integration | [Spec #2 handoff](HANDOFF_SPEC_2.md). |
 | Check the bounded PR stabilization findings and merge assessment | [Stabilization ledger](STABILIZATION.md). |
 
 ## Status conventions

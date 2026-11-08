@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -9,8 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader, Section } from "@/components/PageHeader";
 import { ChargerCard } from "@/components/ChargerCard";
+import { CatalogChargerCard } from "@/components/CatalogChargerCard";
 import { EARNINGS_HISTORY, money } from "@/lib/data";
+import type { CatalogCharger } from "@/lib/catalog/types";
 import { useApp } from "@/lib/store";
+import { listingsRequest, type PeerListing } from "@/lib/client/listings";
 
 function Stat({ k, v }: { k: string; v: string }) {
   return <div className="rounded-2xl border bg-card p-4"><p className="text-xs text-muted-foreground">{k}</p><p className="text-2xl font-bold">{v}</p></div>;
@@ -19,6 +23,21 @@ function Stat({ k, v }: { k: string; v: string }) {
 export default function Page() {
   const app = useApp();
   const { role, set } = app;
+  const [peerListings, setPeerListings] = useState<PeerListing[]>([]);
+  const [listingError, setListingError] = useState("");
+  useEffect(() => {
+    setPeerListings([]); setListingError("");
+    if (!app.user) return;
+    let cancelled = false;
+    void listingsRequest("GET").then(({ listings }) => { if (!cancelled) setPeerListings(listings); }).catch(() => { if (!cancelled) setListingError("Could not load listings."); });
+    return () => { cancelled = true; };
+  }, [app.user?.id]);
+  useEffect(() => { if (new URLSearchParams(window.location.search).has("host")) set({ role: "host" }); }, [app.accountReady]);
+  const toggleListing = async (listing: PeerListing, published: boolean) => {
+    try { const result = await listingsRequest("PATCH", { ...listing, published }); setPeerListings((current) => current.map((item) => item.id === listing.id ? result.listing : item)); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not update listing."); }
+  };
+  const [catalogFavorites, setCatalogFavorites] = useState<CatalogCharger[]>([]);
   const completed = app.reservations.filter((r) => r.status === "Completed");
   const spent = completed.reduce((s, r) => s + r.total, 0);
   const kwh = completed.reduce((s, r) => s + r.kwh, 0);
@@ -29,6 +48,21 @@ export default function Page() {
     set((s) => ({ hostBookings: s.hostBookings.map((b) => (b.id === id ? { ...b, status } : b)) }));
     toast.success(`Booking ${status.toLowerCase()}`);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const catalogIds = app.favorites.filter((id) => !app.getCharger(id));
+    void Promise.all(catalogIds.map(async (id) => {
+      try {
+        const response = await fetch(`/api/chargers/${encodeURIComponent(id)}`);
+        if (!response.ok) return null;
+        return (await response.json() as { charger: CatalogCharger }).charger;
+      } catch { return null; }
+    })).then((chargers) => {
+      if (!cancelled) setCatalogFavorites(chargers.filter((charger): charger is CatalogCharger => charger !== null));
+    });
+    return () => { cancelled = true; };
+  }, [app.favorites, app.listings]);
 
   return (
     <div>
@@ -57,8 +91,8 @@ export default function Page() {
                       <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
                         <div>
                           <p className="font-semibold">{c?.name ?? "Charger"}</p>
-                          <p className="text-sm text-muted-foreground">{r.date} · {r.start} · {r.durationHrs} hr · {r.kwh} kWh · {r.payment}</p>
-                          <p className="text-xs text-muted-foreground">#{r.id} · {r.status}</p>
+                          <p className="text-sm text-muted-foreground">{r.date} Â· {r.start} Â· {r.durationHrs} hr Â· {r.kwh} kWh Â· {r.payment}</p>
+                          <p className="text-xs text-muted-foreground">#{r.id} Â· {r.status}</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="font-bold">{money(r.total)}</span>
@@ -74,6 +108,7 @@ export default function Page() {
                 </TabsContent>
               ))}
               <TabsContent value="favorites" className="space-y-3">
+                {catalogFavorites.map((c) => <CatalogChargerCard key={c.id} charger={c} />)}
                 {app.favorites.map(app.getCharger).map((c) => c && <ChargerCard key={c.id} charger={c} />)}
                 {!app.favorites.length && <p className="text-muted-foreground">No favorites yet.</p>}
               </TabsContent>
@@ -82,7 +117,7 @@ export default function Page() {
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-4">
-              <Stat k="Active listings" v={String(app.listings.filter((l) => !l.disabled).length)} />
+              <Stat k="Active listings" v={String(peerListings.filter((l) => l.published).length)} />
               <Stat k="Pending requests" v={String(app.hostBookings.filter((b) => b.status === "Pending").length)} />
               <Stat k="Completed sessions" v={String(hostDone.length)} />
               <Stat k="Total earned" v={money(earned)} />
@@ -100,8 +135,8 @@ export default function Page() {
               {app.hostBookings.map((b) => (
                 <div key={b.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
                   <div>
-                    <p className="font-semibold">{b.driver} · {b.vehicle}</p>
-                    <p className="text-sm text-muted-foreground">{app.getCharger(b.chargerId)?.name} · {b.date} {b.start} · {b.kwh} kWh</p>
+                    <p className="font-semibold">{b.driver} Â· {b.vehicle}</p>
+                    <p className="text-sm text-muted-foreground">{app.getCharger(b.chargerId)?.name} Â· {b.date} {b.start} Â· {b.kwh} kWh</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold">{money(b.earnings)}</span>
@@ -114,13 +149,12 @@ export default function Page() {
             </div>
             <div className="mb-3 mt-6 flex items-center justify-between"><h2 className="text-lg font-semibold">My listings</h2><Button asChild size="sm"><Link href="/list-charger">Add listing</Link></Button></div>
             <div className="space-y-3">
-              {app.listings.map((l) => (
+              {listingError && <p role="alert">{listingError}</p>}
+              {peerListings.map((l) => (
                 <div key={l.id} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4">
-                  <div className="flex items-center gap-3">
-                    <img src={l.photos[0]} alt="" className="h-14 w-20 rounded-lg object-cover" />
-                    <div><p className="font-semibold">{l.name}</p><p className="text-sm text-muted-foreground">{l.connector} · {money(l.pricePerKwh)}/kWh</p></div>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">{l.disabled ? "Paused" : "Live"}<Switch checked={!l.disabled} onCheckedChange={(on) => set((s) => ({ listings: s.listings.map((x) => (x.id === l.id ? { ...x, disabled: !on } : x)) }))} /></label>
+                  <div><p className="font-semibold">{l.name}</p><p className="text-sm text-muted-foreground">{l.connector} · {money(Number(l.price))}/kWh</p></div>
+                  <div className="flex items-center gap-3"><Button size="sm" variant="outline" asChild><Link href={`/list-charger?id=${encodeURIComponent(l.id)}`}>Edit</Link></Button>
+                    <label className="flex items-center gap-2 text-sm">{l.published ? "Live" : "Paused"}<Switch aria-label={`Publish ${l.name}`} checked={l.published} onCheckedChange={(on) => void toggleListing(l, on)} /></label></div>
                 </div>
               ))}
             </div>

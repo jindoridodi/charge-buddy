@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { PageHeader, Section, Field, NativeSelect } from "@/components/PageHeader";
 import { CONNECTORS, type Connector, type Vehicle } from "@/lib/data";
 import { useApp, type Settings } from "@/lib/store";
+import { vehicleSchema } from "@/lib/vehicle-schema";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="space-y-4 rounded-2xl border bg-card p-5"><h2 className="text-lg font-semibold">{title}</h2>{children}</div>;
@@ -24,9 +25,11 @@ export default function Page() {
   const [nv, setNv] = useState({ nickname: "", make: "", model: "", year: 2024, batteryKwh: 60, efficiency: 3.5, connector: "CCS" as Connector });
 
   const addVehicle = () => {
-    if (!nv.make || !nv.model) { toast.error("Enter make and model"); return; }
-    const v: Vehicle = { ...nv, id: `v${Date.now()}`, nickname: nv.nickname || `${nv.make} ${nv.model}` };
-    app.set((st) => ({ vehicles: [...st.vehicles, v] }));
+    if (app.vehicles.length >= 20) { toast.error("You can add up to 20 vehicles"); return; }
+    const result = vehicleSchema.safeParse({ ...nv, id: crypto.randomUUID(), nickname: nv.nickname.trim() || `${nv.make.trim()} ${nv.model.trim()}` });
+    if (!result.success) { toast.error("Enter a make and model (up to 100 characters), a year from 1886 to 2100, and positive battery and efficiency values. Nicknames must be at most 100 characters."); return; }
+    const v: Vehicle = result.data;
+    app.set((st) => ({ vehicles: [...st.vehicles, v], defaultVehicleId: st.defaultVehicleId || v.id }));
     setNv({ ...nv, nickname: "", make: "", model: "" });
     toast.success("Vehicle added");
   };
@@ -51,7 +54,7 @@ export default function Page() {
                 <p className="text-sm text-muted-foreground">{v.year} {v.make} {v.model} · {v.batteryKwh} kWh · {v.efficiency} mi/kWh · {v.connector}</p></div>
               <div className="flex gap-2">
                 {v.id !== app.defaultVehicleId && <Button size="sm" variant="outline" onClick={() => app.set({ defaultVehicleId: v.id })}>Make default</Button>}
-                <Button size="icon" variant="ghost" aria-label="Remove" disabled={app.vehicles.length <= 1} onClick={() => app.set((st) => ({ vehicles: st.vehicles.filter((x) => x.id !== v.id), defaultVehicleId: st.defaultVehicleId === v.id ? st.vehicles.find((x) => x.id !== v.id)!.id : st.defaultVehicleId }))}><Trash2 className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => app.set((st) => ({ vehicles: st.vehicles.filter((x) => x.id !== v.id), defaultVehicleId: st.defaultVehicleId === v.id ? st.vehicles.find((x) => x.id !== v.id)?.id ?? "" : st.defaultVehicleId }))}><Trash2 className="h-4 w-4" /></Button>
               </div>
             </div>
           ))}
@@ -88,10 +91,6 @@ export default function Page() {
           ))}
         </Card>
 
-        <Card title="Demo data">
-          <p className="text-sm text-muted-foreground">Everything is stored in this browser only. Reset to restore the sample data.</p>
-          <Button variant="destructive" onClick={() => { app.reset(); toast("Demo data reset"); }}>Reset demo data</Button>
-        </Card>
       </Section>
     </div>
   );

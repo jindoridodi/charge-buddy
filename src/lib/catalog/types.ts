@@ -35,13 +35,15 @@ export interface CatalogCharger {
   public_access: boolean;
   availability_status: "available" | "unknown" | "unavailable";
   opening_hours_confidence: "verified" | "reported" | "unknown";
+  host_price_per_kwh?: number | null;
+  effective_price_per_kwh?: number | null;
   community_price_per_kwh?: number | null;
   community_price_observed_at?: string | null;
   price_summary?: PriceSummary;
 }
 
 export interface PriceSummary {
-  status: "community" | "unknown";
+  status: "host" | "community" | "unknown";
   price_per_kwh: number | null;
   observed_at: string | null;
 }

@@ -28,6 +28,25 @@ async function tripPage(t, overrides = {}) {
 const id = "00000000-0000-0000-0000-000000000055";
 const charger = { id, name: "Public test station", address: "Boston", connector_types: ["CCS"], operational_status: "E", availability_status: "unknown", imported_at: "2026-11-01T00:00:00Z", price_summary: { status: "unknown", price_per_kwh: null, observed_at: null } };
 
+test("anonymous discovery and detail do not fall back to sample chargers", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [], total: 0 } });
+    if (url.pathname === "/api/chargers/c1") return route.fulfill({ status: 404, json: { error: "Charger not found" } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByText("No public chargers match these filters.", { exact: true }).waitFor();
+  assert.equal(await page.getByText("My Garage Charger", { exact: true }).count(), 0);
+  await page.goto(`${origin}/chargers/c1`);
+  await page.getByText("Charger not found.", { exact: true }).waitFor();
+});
+
 before(async () => {
   server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "0"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" } });
   origin = await new Promise((resolve, reject) => {
@@ -156,6 +175,29 @@ test("public discovery includes a charger after its price becomes more than fift
   await page.getByText(charger.name, { exact: true }).waitFor();
 });
 
+test("public discovery lets a charger be saved as a favorite", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === `/api/chargers/${id}`) return route.fulfill({ json: { charger: { ...charger, latitude: 42.36, longitude: -71.06 }, reports: [] } });
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [{ ...charger, latitude: 42.36, longitude: -71.06 }], total: 1 } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  const favorite = page.locator(`#card-${id}`).getByRole("button", { name: "Favorite", exact: true });
+  await favorite.waitFor();
+  assert.equal(await favorite.getAttribute("aria-pressed"), "false");
+  await favorite.click();
+  assert.equal(await favorite.getAttribute("aria-pressed"), "true");
+  await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("tab", { name: "Favorites", exact: true }).click();
+  await page.getByText(charger.name, { exact: true }).waitFor();
+});
+
 test("changing any planning input invalidates the completed trip", async (t) => {
   const page = await tripPage(t);
   const changes = [
@@ -246,4 +288,106 @@ test("editing cancels pending geocoding and clears errors before the next plan",
     await page.getByLabel("Destination").fill("Portland, ME");
     await page.getByText("Current provider failure", { exact: true }).waitFor({ state: "hidden" });
   } finally { release(); }
+});
+
+test("vehicle form rejects invalid account data and accepts valid values", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await page.goto(`${origin}/settings`);
+  await page.getByLabel("Make", { exact: true }).fill("Test");
+  await page.getByLabel("Model", { exact: true }).fill("EV");
+  for (const [label, value] of [["Year", "1800"], ["Year", "2024.5"], ["Battery (kWh)", "0"], ["Efficiency (mi/kWh)", "-1"]]) {
+    const input = page.getByLabel(label, { exact: true });
+    const original = await input.inputValue();
+    await input.fill(value);
+    await page.getByRole("button", { name: "Add vehicle" }).click();
+    assert.equal(await page.getByText("Test EV", { exact: true }).count(), 0);
+    await input.fill(original);
+  }
+  await page.getByRole("button", { name: "Add vehicle" }).click();
+  assert.equal(await page.getByText("Test EV", { exact: true }).count(), 1);
+  while (await page.getByRole("button", { name: "Remove", exact: true }).count()) {
+    await page.getByRole("button", { name: "Remove", exact: true }).first().click();
+  }
+  await page.getByLabel("Make", { exact: true }).fill("Test");
+  await page.getByLabel("Model", { exact: true }).fill("EV");
+  await page.getByRole("button", { name: "Add vehicle" }).click();
+  assert.equal(await page.getByText("Default", { exact: true }).count(), 1);
+});
+
+test("public quotes stay consistent across discovery, detail and comparison", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  const priced = { ...charger, latitude: 37, longitude: -122, price_summary: { status: "community", price_per_kwh: 0.5, observed_at: "2026-11-01" } };
+  const unknown = { ...priced, id: "unknown", name: "Unknown station", price_summary: { status: "unknown", price_per_kwh: null, observed_at: null } };
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/locations") return route.fulfill({ json: { places: [{ label: "Origin", location: { lat: url.searchParams.get("q") === "Far" ? 37.1 : 37, lng: -122 } }] } });
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [priced, unknown], total: 2 } });
+    if (url.pathname.startsWith("/api/chargers/")) return route.fulfill({ json: { charger: url.pathname.endsWith("unknown") ? unknown : priced, reports: [] } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByLabel("Search location").fill("Origin");
+  await page.getByRole("button", { name: "Set location" }).click();
+  await page.getByLabel("Requested energy (kWh)").fill("20");
+  await page.getByText("Estimated total: $10.00", { exact: true }).waitFor();
+  await page.getByLabel("Search location").fill("Far");
+  await page.getByRole("button", { name: "Set location" }).click();
+  const pricedCard = page.locator(`#card-${id}`);
+  await pricedCard.getByText(/Estimated total: \$11\./).waitFor();
+  const firstQuote = await pricedCard.getByText(/Estimated total:/).innerText();
+  await page.getByLabel("Quote vehicle").selectOption("v2");
+  await page.waitForFunction(({ id, firstQuote }) => document.querySelector(`#card-${id}`)?.textContent?.includes(firstQuote) === false, { id, firstQuote });
+  const changedQuote = await pricedCard.getByText(/Estimated total:/).innerText();
+  assert.notEqual(changedQuote, firstQuote);
+  const amount = changedQuote.match(/\$[\d.]+/)[0];
+  await page.getByRole("checkbox", { name: "Compare Public test station" }).check();
+  await page.getByRole("checkbox", { name: "Compare Unknown station" }).check();
+  await page.getByRole("link", { name: /Compare \(2\)/ }).click();
+  await page.getByText(amount, { exact: true }).waitFor();
+  await page.getByText("Lowest estimated cost", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Lowest estimated cost", { exact: true }).count(), 1);
+  await page.getByRole("link", { name: "Public test station" }).click();
+  await page.getByText(`Estimated total: ${amount}`, { exact: true }).waitFor();
+});
+
+test("failed map tiles leave the mobile list and comparison usable", async (t) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(5000);
+  const first = { ...charger, latitude: 37, longitude: -122 };
+  const second = { ...first, id: "second", name: "Second station" };
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [first, second], total: 2 } });
+    if (url.pathname.startsWith("/api/chargers/")) return route.fulfill({ json: { charger: url.pathname.endsWith("second") ? second : first, reports: [] } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByText("Map unavailable. Use the charger list.", { exact: true }).waitFor();
+  await page.getByRole("checkbox", { name: "Compare Public test station" }).check();
+  await page.getByRole("checkbox", { name: "Compare Second station" }).check();
+  await page.getByRole("link", { name: /Compare \(2\)/ }).click();
+  await page.getByRole("link", { name: "Second station" }).waitFor();
+});
+test("listing form requires a signed-in account before publishing", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(`${origin}/list-charger`);
+  await page.getByLabel("Listing name").fill("Neighborhood charger");
+  await page.getByLabel("Street address").fill("123 Secret Street");
+  await page.getByLabel("City and state").fill("Boston, MA");
+  await page.getByRole("button", { name: "Save listing" }).click();
+  await page.locator("p[role=alert]").waitFor();
+  assert.match(await page.locator("p[role=alert]").innerText(), /sign in|supabase is not configured/i);
 });

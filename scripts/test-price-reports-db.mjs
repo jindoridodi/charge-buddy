@@ -14,11 +14,14 @@ trap 'pg_ctl -D /tmp/price-report-db -m immediate -w stop >/dev/null' EXIT
 run_sql() { psql -X -q -h /tmp -U postgres -v ON_ERROR_STOP=1 -f "$1"; }
 run_sql /tests/fixtures/supabase-auth.sql
 for migration in /migrations/*.sql; do run_sql "$migration"; done
+run_sql /tests/account-db.sql
 run_sql /tests/price-report-permissions.sql
 run_sql /tests/catalog-db.sql
+run_sql /tests/peer-listings-db.sql
 run_sql /tests/price-report-concurrency.sql
 run_sql /tests/price-report-admin.sql`,
 ], { stdio: "inherit" });
 
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;
+

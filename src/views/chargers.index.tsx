@@ -13,24 +13,24 @@ import { CONNECTORS, LEVELS } from "@/lib/data";
 import { useApp } from "@/lib/store";
 import type { CatalogCharger } from "@/lib/catalog/types";
 import { CatalogChargerCard } from "@/components/CatalogChargerCard";
-import { ChargerCard } from "@/components/ChargerCard";
-import { filterLocalListings } from "@/lib/catalog/local-listings";
+import { catalogQuote } from "@/lib/quote";
 import type { Coordinates } from "@/lib/trips/types";
 
 
 const SORTS = {
   name: "Name (A–Z)",
-  price: "Lowest electricity price",
+  cost: "Lowest estimated cost",
 } as const;
 
 export default function FindChargers({ q = "" }: { q?: string }) {
-  const { compare, settings, listings } = useApp();
+  const { compare, settings, quoteOrigin, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle, set } = useApp();
   const [catalog, setCatalog] = useState<CatalogCharger[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState(q);
   const [locationSearch, setLocationSearch] = useState({ query: q });
-  const [origin, setOrigin] = useState<Coordinates | null>(null);
+  const origin = quoteOrigin;
+  const setOrigin = (value: Coordinates | null) => set({ quoteOrigin: value });
   const [locationLabel, setLocationLabel] = useState("Nationwide");
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationBusy, setLocationBusy] = useState(Boolean(q));
@@ -48,6 +48,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   const [active, setActive] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMap, setMobileMap] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false);
 
   useEffect(() => {
     setLocationQuery(q);
@@ -56,8 +57,8 @@ export default function FindChargers({ q = "" }: { q?: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    setOrigin(null); setCatalog([]); setTotal(0); setLocationError(null);
-    if (!locationSearch.query) { setLocationLabel("Nationwide"); setLocationBusy(false); return; }
+    setCatalog([]); setTotal(0); setLocationError(null);
+    if (!locationSearch.query) { setLocationLabel(origin ? "Selected origin" : "Nationwide"); setLocationBusy(false); return; }
     setLocationBusy(true);
     fetch(`/api/locations?q=${encodeURIComponent(locationSearch.query)}`, { signal: controller.signal }).then(async (response) => {
       const body = await response.json() as { places?: { label: string; location: Coordinates }[]; error?: string };
@@ -71,13 +72,14 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     return () => controller.abort();
   }, [locationSearch]);
 
-  useEffect(() => { setPage(1); }, [query, origin, locationSearch, radius, connectors, levels, maxPrice, minPower, time, sort]);
+  useEffect(() => { setPage(1); }, [query, origin, locationSearch, radius, connectors, levels, maxPrice, minPower, time, sort, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle]);
 
   useEffect(() => {
     if (locationBusy || (locationSearch.query && !origin)) { setLoading(false); return; }
     const controller = new AbortController();
     const params = new URLSearchParams({ limit: "100", page: String(page), sort,
       q: query.trim(), radius: String(radius), maxPrice: String(maxPrice), minPower: String(minPower),
+      kwh: String(quoteEnergy), efficiency: String(vehicles.find((v) => v.id === quoteVehicleId)?.efficiency ?? defaultVehicle?.efficiency ?? 3.5),
       connectors: connectors.join(","), levels: levels.join(","), operational: String(time === "operational"),
       ...(origin ? { lat: String(origin.lat), lng: String(origin.lng) } : {}),
     });
@@ -91,15 +93,11 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       if (!controller.signal.aborted) setCatalogError(error instanceof Error ? error.message : "Could not load public catalog");
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); }), 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationSearch, retry]);
+  }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationSearch, retry, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle]);
 
-  const localListings = useMemo(() => locationSearch.query && !origin ? [] : filterLocalListings(listings, {
-    query, origin, radius, connectors, levels, maxPrice, minPower, operational: time === "operational",
-  }), [listings, query, origin, radius, connectors, levels, maxPrice, minPower, time, locationSearch]);
   const markers = useMemo(() => [
-    ...catalog.map((charger) => ({ id: charger.id, lat: charger.latitude, lng: charger.longitude, label: charger.price_summary?.price_per_kwh != null ? `$${charger.price_summary.price_per_kwh.toFixed(2)}` : "?" })),
-    ...localListings.map((charger) => ({ id: charger.id, lat: charger.lat, lng: charger.lng, label: `$${charger.pricePerKwh.toFixed(2)}`, mine: true })),
-  ], [catalog, localListings]);
+    ...catalog.map((charger) => ({ id: charger.id, lat: charger.latitude, lng: charger.longitude, label: (() => { const total = catalogQuote(charger, origin, quoteEnergy, vehicles.find((v) => v.id === quoteVehicleId)?.efficiency ?? defaultVehicle?.efficiency ?? 3.5).total; return total == null ? "?" : `$${total.toFixed(2)}`; })() })),
+  ], [catalog, origin, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const select = (id: string) => {
@@ -111,13 +109,15 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <h1 className="sr-only">Find Chargers</h1>
       <div className="border-b bg-card px-4 py-3">
-        <form className="mb-3 flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); setLocationSearch({ query: locationQuery.trim() }); }}>
+        <form className="mb-3 flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); setOrigin(null); setLocationSearch({ query: locationQuery.trim() }); }}>
           <Input aria-label="Search location" value={locationQuery} onChange={(event) => setLocationQuery(event.target.value)} placeholder="Search near a U.S. city, address or ZIP" className="min-w-[200px] flex-1" />
           <Button type="submit" disabled={locationBusy}>Set location</Button>
-          <Button type="button" variant="outline" onClick={() => { setLocationQuery(""); setLocationSearch({ query: "" }); }}>Nationwide</Button>
+          <Button type="button" variant="outline" onClick={() => { setLocationQuery(""); setOrigin(null); setLocationSearch({ query: "" }); }}>Nationwide</Button>
         </form>
-        <p className="mb-3 text-xs text-muted-foreground" role="status">{locationBusy ? "Finding location…" : locationError ?? `${locationLabel}${origin ? " · radius uses straight-line distance" : " · set a location to apply a radius"}`}</p>
+        <p className="mb-3 text-xs text-muted-foreground" role="status">{locationBusy ? "Finding location…" : locationError ?? `${locationLabel}${origin ? " · estimates use straight-line round-trip travel at $0.32/kWh" : " · set a location to apply a radius"}`}</p>
         <div className="flex flex-wrap items-center gap-2">
+          <label>Requested energy (kWh)<Input aria-label="Requested energy (kWh)" type="number" min="1" max="500" value={quoteEnergy} onChange={(e) => set({ quoteEnergy: Math.max(1, Math.min(500, Number(e.target.value) || 1)) })} /></label>
+          <label>Vehicle<NativeSelect aria-label="Quote vehicle" value={quoteVehicleId || defaultVehicle?.id || ""} onChange={(e) => set({ quoteVehicleId: e.target.value })}>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.nickname}</option>)}</NativeSelect></label>
           <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input aria-label="Filter chargers" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Charger name, city, ZIP or address" className="pl-9" />
@@ -174,19 +174,19 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div className={`w-full overflow-y-auto p-4 lg:w-[52%] ${mobileMap ? "hidden lg:block" : ""}`}>
-          <p className="mb-3 text-sm text-muted-foreground">{catalog.length} of {total} public chargers · community prices determine price ranking</p>
+          <p className="mb-3 text-sm text-muted-foreground">{catalog.length} of {total} public chargers · host and community prices determine estimated costs</p>
           <div className="space-y-3">
             {catalog.map((c) => <div id={`card-${c.id}`} key={c.id}><CatalogChargerCard charger={c} active={active === c.id} onHover={setActive} /></div>)}
             {catalogError && <p role="alert" className="text-sm text-destructive">{catalogError}</p>}
             {(catalogError || catalog.length < total) && <Button variant="outline" disabled={loading} onClick={() => catalogError ? setRetry((value) => value + 1) : setPage((value) => value + 1)}>{catalogError ? "Retry loading chargers" : "Load more chargers"}</Button>}
             {!catalog.length && <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">{locationBusy || loading ? "Loading chargers…" : locationError ?? catalogError ?? "No public chargers match these filters."}</div>}
-            {!!localListings.length && <><h2 className="pt-4 text-sm font-semibold">Local demo listings · stored only in this browser</h2>{localListings.map((charger) => <ChargerCard key={charger.id} charger={charger} origin={origin} active={active === charger.id} onHover={setActive} />)}</>}
           </div>
         </div>
         <div className={`flex-1 ${mobileMap ? "block" : "hidden lg:block"}`}>
-          <MapView markers={markers} activeId={active} onSelect={select} center={origin ? [origin.lat, origin.lng] : undefined} />
+          <MapView onError={() => { setMobileMap(false); setMapFailed(true); }} markers={markers} activeId={active} onSelect={select} center={origin ? [origin.lat, origin.lng] : undefined} />
         </div>
-        <Button className="absolute bottom-6 left-1/2 z-[500] -translate-x-1/2 rounded-full shadow-glow lg:hidden" onClick={() => setMobileMap(!mobileMap)}>
+        {mapFailed && <p role="status" className="absolute bottom-2 right-2 bg-card p-2 text-sm">Map unavailable. Use the charger list.</p>}
+        <Button disabled={mapFailed} className="absolute bottom-6 left-1/2 z-[500] -translate-x-1/2 rounded-full shadow-glow lg:hidden" onClick={() => setMobileMap(!mobileMap)}>
           {mobileMap ? <><List className="h-4 w-4" /> List</> : <><MapIcon className="h-4 w-4" /> Map</>}
         </Button>
       </div>

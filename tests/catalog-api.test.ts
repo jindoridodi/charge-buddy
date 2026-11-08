@@ -55,7 +55,7 @@ test("invalid catalog filters are rejected before any database request", async (
   }
 });
 
-test("unknown prices remain discoverable but are excluded before ranked pagination", async (t) => {
+test("cost ranking sends quote inputs before pagination and retains unknown prices", async (t) => {
   const previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL, previousKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://catalog-test.invalid";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-key";
@@ -63,16 +63,19 @@ test("unknown prices remain discoverable but are excluded before ranked paginati
     if (previousUrl == null) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl;
     if (previousKey == null) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = previousKey;
   });
-  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, options?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    const rows = [{ id: "known", community_price_per_kwh: 0.3, community_price_observed_at: "2026-10-31" }, { id: "unknown", community_price_per_kwh: null }];
-    const eligible = url.searchParams.get("community_price_per_kwh") === "not.is.null" ? rows.slice(0, 1) : rows;
-    return Response.json(eligible.slice(Number(url.searchParams.get("offset") ?? 0)), { headers: { "content-range": `*/${eligible.length}` } });
+    assert.equal(url.pathname, "/rest/v1/rpc/search_catalog_ranked");
+    const args = JSON.parse(String(options?.body));
+    assert.equal(args.requested_kwh, 20);
+    assert.equal(args.efficiency, 4.1);
+    assert.equal(args.origin_lat, 42.36);
+    assert.equal(url.searchParams.get("offset"), "1");
+    return Response.json([{ id: "unknown", community_price_per_kwh: null }], { headers: { "content-range": "1-1/2" } });
   });
-  const ordinary = await GET(new NextRequest("https://app-test.invalid/api/chargers"));
-  assert.equal((await ordinary.json()).chargers.length, 2);
-  const ranked = await GET(new NextRequest("https://app-test.invalid/api/chargers?sort=price&page=2&limit=1"));
-  const body = await ranked.json();
-  assert.deepEqual(body.chargers, []);
-  assert.equal(body.total, 1);
+  const response = await GET(new NextRequest("https://app-test.invalid/api/chargers?sort=cost&lat=42.36&lng=-71.06&kwh=20&efficiency=4.1&page=2&limit=1"));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.chargers[0].id, "unknown");
+  assert.equal(body.total, 2);
 });

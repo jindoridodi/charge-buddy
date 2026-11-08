@@ -15,7 +15,7 @@ docker compose --env-file .env up -d
 docker compose logs -f valhalla nominatim
 ```
 
-The first boot downloads the chosen OSM PBF and imports/builds data. Do not restart or delete the named volumes while that work is running. Start with the California URL in `.env.example`; replacing it with the U.S. extract is a new, much larger import and needs VM capacity planning.
+The first boot downloads the U.S. OSM extract, including Alaska and Hawaii, and imports/builds data. Do not restart or delete the named volumes while that work is running. Size the VM for the national import before starting. Changing an extract requires a fresh staged import; changing the URL alone does not replace existing named-volume data.
 
 ## Validate and connect ChargeBuddy
 
@@ -48,7 +48,7 @@ Use a VM with SSD-backed persistent volumes for map data and separate memory lim
 ## Operations
 
 1. Download licensed U.S. OSM extracts and build the service-specific indexes in a staging volume.
-2. Health-check geocoding and a representative route through both services.
+2. Health-check geocoding and routes within the contiguous states, Alaska, and Hawaii. Verify a long connected route and that disconnected locations return no route. The U.S.-only extract does not include Canadian roads, so routes requiring travel through Canada are outside its coverage.
 3. Set `VALHALLA_URL` and `NOMINATIM_URL` only in the Next.js server environment.
 4. Run `npm run import:nrel` on a scheduled worker after the catalog migration.
 5. Monitor provider latency/error rates and catalog import freshness. Do not advertise live traffic, weather, availability, or prices.

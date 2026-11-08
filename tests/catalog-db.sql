@@ -64,3 +64,30 @@ $$;
 reset role;
 set timezone = 'UTC';
 \echo 'PASS UTC price freshness is independent of the database session time zone'
+
+reset role;
+insert into public.chargers (id, nrel_station_id, name, address, latitude, longitude, connector_types, power_kw)
+values ('00000000-0000-0000-0000-000000000140', 140, 'Near', 'Test only', 42.36, -71.06, array['QUOTE'], 50),
+       ('00000000-0000-0000-0000-000000000141', 141, 'Far', 'Test only', 42.56, -71.06, array['QUOTE'], 50),
+       ('00000000-0000-0000-0000-000000000142', 142, 'Unknown', 'Test only', 42.36, -71.06, array['QUOTE'], 50);
+insert into public.community_price_reports (charger_id, reporter_id, price_per_kwh, observed_at)
+values ('00000000-0000-0000-0000-000000000140', '00000000-0000-0000-0000-000000000001', 0.50, (now() at time zone 'UTC')::date),
+       ('00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000001', 0.20, (now() at time zone 'UTC')::date);
+set role anon;
+do $$
+declare ranked uuid[];
+begin
+  select array_agg(id) into ranked from public.search_catalog_ranked(42.36, -71.06, 30, array['QUOTE'], '{}', 10, 0, false, 20, 1);
+  if ranked is distinct from array['00000000-0000-0000-0000-000000000140', '00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000142']::uuid[] then
+    raise exception 'Expected near, far, unknown for low-efficiency vehicle, got %', ranked;
+  end if;
+  select array_agg(id) into ranked from public.search_catalog_ranked(42.36, -71.06, 30, array['QUOTE'], '{}', 10, 0, false, 20, 4);
+  if ranked[1] is distinct from '00000000-0000-0000-0000-000000000141'::uuid then raise exception 'Vehicle efficiency did not change ranking'; end if;
+  select array_agg(id) into ranked from public.search_catalog_ranked(42.36, -71.06, 30, array['QUOTE'], '{}', 10, 0, false, 50, 1);
+  if ranked[1] is distinct from '00000000-0000-0000-0000-000000000141'::uuid then raise exception 'Requested energy did not change ranking'; end if;
+  select array_agg(id) into ranked from public.search_catalog_ranked(42.56, -71.06, 30, array['QUOTE'], '{}', 10, 0, false, 20, 1);
+  if ranked[1] is distinct from '00000000-0000-0000-0000-000000000141'::uuid then raise exception 'Origin did not change ranking'; end if;
+end;
+$$;
+reset role;
+\echo 'PASS quote ranking considers origin, energy, vehicle and unknown price'
