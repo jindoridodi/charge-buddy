@@ -391,3 +391,24 @@ test("listing form requires a signed-in account before publishing", async (t) =>
   await page.locator("p[role=alert]").waitFor();
   assert.match(await page.locator("p[role=alert]").innerText(), /sign in|supabase is not configured/i);
 });
+
+test("trip results expose legs and actionable outcomes on mobile with a keyboard", async (t) => {
+  let outcome = "feasible";
+  const stop = { chargerId: "stop", chargerName: "Midway", location: { lat: 37.5, lng: -121.8 }, arrivalSocPercent: 30, departureSocPercent: 70, energyAddedKwh: 28, chargeMinutes: 25, estimatedChargeCost: 9.8, source: "nrel" };
+  const page = await tripPage(t, { plan: (route) => outcome === "invalid_location" || outcome === "provider_unavailable" ? route.fulfill({ status: outcome === "invalid_location" ? 422 : 503, json: { outcome, error: "Please retry" } }) : route.fulfill({ json: { ...trip, outcome, stops: outcome === "feasible" ? [stop] : [], legs: [{ departureSocPercent: 70, arrivalSocPercent: 30, distanceMiles: 40, driveMinutes: 45 }, { departureSocPercent: 70, arrivalSocPercent: 20, distanceMiles: 40, driveMinutes: 45 }], warnings: ["Check station access"] } }) });
+  await page.setViewportSize({ width: 375, height: 812 });
+  const button = page.getByRole("button", { name: "Plan route", exact: true });
+  await button.focus();
+  await page.keyboard.press("Enter");
+  await page.getByText("Start → Midway", { exact: true }).waitFor();
+  await page.getByText("Battery: 70% → 30% · 40 mi · ~45 min driving", { exact: true }).waitFor();
+  await page.getByText("Charge 28 kWh · ~25 min · $9.80", { exact: true }).waitFor();
+  await page.getByText("Check station access", { exact: true }).waitFor();
+  assert.ok(await page.locator(".leaflet-interactive").count() > 0);
+  for (const [next, text] of [["no_feasible_plan", "No feasible plan found"], ["search_bounds_reached", "Search limit reached"], ["invalid_location", "Invalid or unreachable location"], ["provider_unavailable", "Planning provider unavailable"]]) {
+    outcome = next;
+    await button.click();
+    await page.getByText(text, { exact: false }).first().waitFor();
+  }
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+});
