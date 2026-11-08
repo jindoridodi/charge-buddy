@@ -13,6 +13,7 @@ import {
   type Vehicle,
 } from "./data";
 import { getBrowserSupabase } from "./supabase/client";
+import { toast } from "sonner";
 import { loadAccount as loadAccountData, saveAccount } from "./client/account";
 
 export interface User {
@@ -78,6 +79,8 @@ type Ctx = State & {
   toggleFavorite: (id: string) => void;
   toggleCompare: (id: string) => void;
   reset: () => void;
+  flushAccount: () => Promise<boolean>;
+  cancelSignOut: () => void;
   startSession: (user: User) => void;
 };
 
@@ -91,6 +94,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [accountReady, setAccountReady] = useState(false);
   const hydratedFor = useRef<string | null>(null);
   const loadingFor = useRef<string | null>(null);
+  const sessionGeneration = useRef(0);
+  const revision = useRef(0);
+  const savedSnapshot = useRef("");
+  const pendingSave = useRef<Promise<boolean> | null>(null);
+  const signingOut = useRef(false);
+  const currentState = useRef(state);
+  currentState.current = state;
+
+  const snapshot = (s: State) => ({ favorites: s.favorites, vehicles: s.vehicles, defaultVehicleId: s.defaultVehicleId || null, settings: s.settings });
 
   const userFromSession = (user: { id: string; email?: string; user_metadata: Record<string, unknown> }): User => ({
     id: user.id,
@@ -100,12 +112,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     purpose: user.user_metadata["purpose"] === "host" || user.user_metadata["purpose"] === "both" ? user.user_metadata["purpose"] : "driver",
   });
 
-  const loadAccount = async (user: User) => {
+  const loadAccount = async (user: User, generation: number) => {
     try {
       const { data: { session } } = await getBrowserSupabase().auth.getSession();
       if (!session || session.user.id !== user.id) return;
       const account = await loadAccountData(session.access_token);
-      if (!account) return;
+      if (generation !== sessionGeneration.current) return;
+      hydratedFor.current = user.id;
+      revision.current = account.revision;
+      savedSnapshot.current = JSON.stringify({ favorites: account.favorites, vehicles: account.vehicles, defaultVehicleId: account.defaultVehicleId, settings: account.settings ?? initial.settings });
       setState((current) => current.user?.id !== user.id ? current : {
         ...stateForSession(user),
         favorites: account.favorites,
@@ -114,27 +129,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settings: account.settings ?? initial.settings,
       });
     } catch {
-      // Keeping an empty account state is safer than retaining another Account's data.
+      if (generation === sessionGeneration.current) toast.error("Could not load account data. Sign in again to retry.");
     } finally {
-      hydratedFor.current = user.id;
-      if (loadingFor.current === user.id) setAccountReady(true);
+      if (generation === sessionGeneration.current && hydratedFor.current === user.id) setAccountReady(true);
     }
   };
 
   const startSession = (user: User) => {
+    if (loadingFor.current === user.id) return;
+    const generation = ++sessionGeneration.current;
+    pendingSave.current = null;
     hydratedFor.current = null;
     loadingFor.current = user.id;
     setAccountReady(false);
     setState(stateForSession(user));
-    void loadAccount(user);
+    void loadAccount(user, generation);
   };
 
   useEffect(() => {
     try {
       const supabase = getBrowserSupabase();
-      void supabase.auth.getSession().then(({ data: { session } }) => { if (session) startSession(userFromSession(session.user)); else setAccountReady(true); }).catch(() => setAccountReady(true));
+      const generation = sessionGeneration.current;
+      void supabase.auth.getSession().then(({ data: { session } }) => { if (generation !== sessionGeneration.current) return; if (session) startSession(userFromSession(session.user)); else setAccountReady(true); }).catch(() => setAccountReady(true));
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_OUT") { hydratedFor.current = null; loadingFor.current = null; setAccountReady(true); setState(initial); }
+        if (event === "SIGNED_OUT") { signingOut.current = false; sessionGeneration.current++; hydratedFor.current = null; loadingFor.current = null; setAccountReady(true); setState(initial); }
         if (event === "SIGNED_IN" && session) startSession(userFromSession(session.user));
       });
       return () => subscription.unsubscribe();
@@ -145,23 +163,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle("dark", state.settings.theme === "dark");
   }, [state]);
 
-  useEffect(() => {
-    if (!state.user || hydratedFor.current !== state.user.id) return;
-    const timer = window.setTimeout(async () => {
+  const flushAccount = () => {
+    if (!accountReady) return Promise.resolve(true);
+    if (pendingSave.current) return pendingSave.current;
+    const generation = sessionGeneration.current;
+    const task = (async () => {
       try {
-        const { data: { session } } = await getBrowserSupabase().auth.getSession();
-        if (!session || session.user.id !== state.user?.id) return;
-        await saveAccount(session.access_token, { favorites: state.favorites, vehicles: state.vehicles, defaultVehicleId: state.defaultVehicleId || null, settings: state.settings });
-      } catch { /* Saving will retry after the next account change. */ }
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [state]);
+        while (generation === sessionGeneration.current) {
+          const current = currentState.current;
+          if (!current.user || hydratedFor.current !== current.user.id) return true;
+          const account = snapshot(current);
+          const serialized = JSON.stringify(account);
+          if (serialized === savedSnapshot.current) return true;
+          const { data: { session } } = await getBrowserSupabase().auth.getSession();
+          if (!session || session.user.id !== current.user.id) throw new Error("Session expired");
+          const result = await saveAccount(session.access_token, { ...account, revision: revision.current });
+          if (generation !== sessionGeneration.current) return false;
+          revision.current = result.revision;
+          savedSnapshot.current = serialized;
+        }
+        return false;
+      } catch {
+        toast.error("Could not save account changes. Your data may have changed in another session; reload and try again.");
+        return false;
+      }
+    })();
+    pendingSave.current = task;
+    void task.finally(() => { if (pendingSave.current === task) pendingSave.current = null; });
+    return task;
+  };
+
+  useEffect(() => {
+    if (accountReady && state.user && hydratedFor.current === state.user.id) void flushAccount();
+  }, [state, accountReady]);
 
   const value = useMemo<Ctx>(() => {
     // Public chargers come from the Supabase/NREL catalog. Local state only owns peer listings and UI selections.
     const allChargers = state.listings.filter((l) => !l.disabled);
     const set: Ctx["set"] = (patch) =>
-      setState((s) => ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) }));
+      setState((s) => signingOut.current || (s.user && !accountReady) ? s : ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) }));
     return {
       ...state,
       accountReady,
@@ -181,7 +221,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ? s.compare
               : [...s.compare, id],
         })),
-      reset: () => { hydratedFor.current = null; loadingFor.current = null; setAccountReady(true); setState(initial); },
+      reset: () => { signingOut.current = false; sessionGeneration.current++; hydratedFor.current = null; loadingFor.current = null; setAccountReady(true); setState(initial); },
+      flushAccount: async () => { signingOut.current = true; const saved = await flushAccount(); if (!saved) signingOut.current = false; return saved; },
+      cancelSignOut: () => { signingOut.current = false; },
       startSession,
     };
   }, [state, accountReady]);

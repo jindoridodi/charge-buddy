@@ -14,7 +14,7 @@ test("account data is unavailable without a verified session", async (t) => {
   t.mock.method(globalThis, "fetch", async () => Response.json({ message: "Unauthorized" }, { status: 401 }));
 
   assert.equal((await GET(new Request("https://app-test.invalid/api/account"))).status, 401);
-  assert.equal((await PATCH(new Request("https://app-test.invalid/api/account", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ favorites: [], vehicles: [], defaultVehicleId: null, settings: { connectors: [], maxDistance: 15, units: "mi", notifyEmail: true, notifyPush: true, notifyBookings: true, defaultMargin: 40, theme: "light" } }) }))).status, 401);
+  assert.equal((await PATCH(new Request("https://app-test.invalid/api/account", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: 0, favorites: [], vehicles: [], defaultVehicleId: null, settings: { connectors: [], maxDistance: 15, units: "mi", notifyEmail: true, notifyPush: true, notifyBookings: true, defaultMargin: 40, theme: "light" } }) }))).status, 401);
 });
 
 test("account writes use the verified session owner, never a posted owner", async (t) => {
@@ -26,13 +26,14 @@ test("account writes use the verified session owner, never a posted owner", asyn
     if (url.pathname === "/auth/v1/user") return Response.json({ id: "account-a" });
     paths.push(url.pathname);
     if (options?.method !== "GET") writes.push(JSON.parse(String(options?.body ?? "{}")));
-    return Response.json(options?.method === "POST" ? [] : {});
+    return Response.json(options?.method === "POST" ? true : {});
   });
 
   const response = await PATCH(new Request("https://app-test.invalid/api/account", {
     method: "PATCH",
     headers: { "content-type": "application/json", authorization: "Bearer account-a-token" },
     body: JSON.stringify({
+      revision: 0,
       ownerId: "account-b",
       favorites: ["c1"],
       vehicles: [],
@@ -43,5 +44,19 @@ test("account writes use the verified session owner, never a posted owner", asyn
 
   assert.equal(response.status, 200);
   assert.ok(writes.every((write) => JSON.stringify(write).includes("account-b") === false));
-  assert.ok(paths.includes("/rest/v1/rpc/replace_account_data"));
+  assert.ok(paths.includes("/rest/v1/rpc/save_account_data"));
+});
+
+test("stale account updates are rejected instead of replacing newer data", async (t) => {
+  configure(t);
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/auth/v1/user") return Response.json({ id: "account-a" });
+    return Response.json(false);
+  });
+  const response = await PATCH(new Request("https://app-test.invalid/api/account", {
+    method: "PATCH", headers: { "content-type": "application/json", authorization: "Bearer token" },
+    body: JSON.stringify({ revision: 0, favorites: [], vehicles: [], defaultVehicleId: null, settings: { connectors: [], maxDistance: 15, units: "mi", notifyEmail: true, notifyPush: true, notifyBookings: true, defaultMargin: 40, theme: "light" } }),
+  }));
+  assert.equal(response.status, 409);
 });
