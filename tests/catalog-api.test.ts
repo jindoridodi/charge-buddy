@@ -66,7 +66,7 @@ test("unknown prices remain discoverable but are excluded before ranked paginati
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const rows = [{ id: "known", community_price_per_kwh: 0.3, community_price_observed_at: "2026-10-31" }, { id: "unknown", community_price_per_kwh: null }];
-    const eligible = url.searchParams.get("community_price_per_kwh") === "not.is.null" ? rows.slice(0, 1) : rows;
+    const eligible = url.searchParams.get("effective_price_per_kwh") === "not.is.null" ? rows.slice(0, 1) : rows;
     return Response.json(eligible.slice(Number(url.searchParams.get("offset") ?? 0)), { headers: { "content-range": `*/${eligible.length}` } });
   });
   const ordinary = await GET(new NextRequest("https://app-test.invalid/api/chargers"));

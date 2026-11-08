@@ -168,7 +168,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div className={`w-full overflow-y-auto p-4 lg:w-[52%] ${mobileMap ? "hidden lg:block" : ""}`}>
-          <p className="mb-3 text-sm text-muted-foreground">{catalog.length} of {total} public chargers · community prices determine price ranking</p>
+          <p className="mb-3 text-sm text-muted-foreground">{catalog.length} of {total} public chargers · host and community prices determine price ranking</p>
           <div className="space-y-3">
             {catalog.map((c) => <div id={`card-${c.id}`} key={c.id}><CatalogChargerCard charger={c} active={active === c.id} onHover={setActive} /></div>)}
             {catalogError && <p role="alert" className="text-sm text-destructive">{catalogError}</p>}

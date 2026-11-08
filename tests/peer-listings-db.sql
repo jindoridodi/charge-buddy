@@ -2,7 +2,7 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000101', false);
 insert into public.peer_listings (name, address, area, latitude, longitude, connector, power_kw, price)
-values ('Peer test', '123 Secret Street', 'Boston MA', 42.361, -71.057, 'J1772', 7.2, 0.4);
+values ('Peer test', '123 Secret Street', 'Boston, MA', 42.361, -71.057, 'J1772', 7.2, 0.4);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000102', false);
 do $$
 begin
@@ -21,3 +21,15 @@ begin
   if exists (select 1 from public.search_catalog(null, null, 15, '{}', '{}', 10, 0, false) where name = 'Peer test') then raise exception 'paused listing discoverable'; end if;
 end $$;
 reset role;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000101', false);
+update public.peer_listings set published = true where name = 'Peer test';
+set role anon;
+do $$
+begin
+  if not exists (select 1 from public.search_catalog(null, null, 15, '{}', '{}', 0.5, 0, false) where name = 'Peer test' and city = 'Boston' and state = 'MA' and host_price_per_kwh = 0.4 and effective_price_per_kwh = 0.4) then raise exception 'peer locality or host price missing'; end if;
+  if exists (select 1 from public.search_catalog(null, null, 15, '{}', '{}', 0.3, 0, false) where name = 'Peer test') then raise exception 'peer price filter ignored'; end if;
+end $$;
+reset role;
+
