@@ -391,3 +391,51 @@ test("listing form requires a signed-in account before publishing", async (t) =>
   await page.locator("p[role=alert]").waitFor();
   assert.match(await page.locator("p[role=alert]").innerText(), /sign in|supabase is not configured/i);
 });
+
+test("failed URL location search clears the previous origin", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(5000);
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/locations") return url.searchParams.get("q") === "Bad" ? route.fulfill({ status: 503, json: { error: "Location failed" } }) : route.fulfill({ json: { places: [{ label: "Origin", location: { lat: 37, lng: -122 } }] } });
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [], total: 0 } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers?q=Origin`);
+  await page.getByText(/Origin · estimates use/).waitFor();
+  await page.getByRole("link", { name: "Home", exact: true }).first().click();
+  const search = page.locator('input').first();
+  await search.fill("Bad");
+  await search.press("Enter");
+  await page.getByText("Location failed").first().waitFor();
+  await page.getByRole("link", { name: "Compare Chargers", exact: true }).first().click();
+  await page.getByText(/set an origin to include travel/).waitFor();
+});
+
+test("comparison keeps available chargers and allows removing an unavailable selection", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(5000);
+  const first = { ...charger, latitude: 37, longitude: -122 };
+  const missing = { ...first, id: "missing", name: "Missing station" };
+  const second = { ...first, id: "second", name: "Second station" };
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [first, missing, second], total: 3 } });
+    if (url.pathname.endsWith("/missing")) return route.fulfill({ status: 404, json: { error: "Not found" } });
+    if (url.pathname.startsWith("/api/chargers/")) return route.fulfill({ json: { charger: url.pathname.endsWith("second") ? second : first } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  for (const name of ["Public test station", "Missing station", "Second station"]) await page.getByRole("checkbox", { name: `Compare ${name}` }).check();
+  await page.getByRole("link", { name: /Compare \(3\)/ }).click();
+  await page.getByRole("link", { name: "Public test station" }).waitFor();
+  await page.getByRole("link", { name: "Second station" }).waitFor();
+  await page.getByRole("row").filter({ hasText: "missing" }).getByRole("button", { name: "Remove" }).click();
+  assert.equal(await page.getByRole("row").filter({ hasText: "missing" }).count(), 0);
+});

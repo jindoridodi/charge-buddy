@@ -79,3 +79,18 @@ test("cost ranking sends quote inputs before pagination and retains unknown pric
   assert.equal(body.chargers[0].id, "unknown");
   assert.equal(body.total, 2);
 });
+
+test("catalog accepts valid vehicle efficiency above 20", async (t) => {
+  const previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL, previousKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://catalog-test.invalid";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-key";
+  t.after(() => {
+    if (previousUrl == null) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl;
+    if (previousKey == null) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = previousKey;
+  });
+  t.mock.method(globalThis, "fetch", async () => Response.json([]));
+  for (const sort of ["name", "cost"]) {
+    const response = await GET(new NextRequest(`https://app-test.invalid/api/chargers?sort=${sort}&efficiency=25`));
+    assert.equal(response.status, 200, sort);
+  }
+});
