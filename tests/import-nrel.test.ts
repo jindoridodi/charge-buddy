@@ -52,6 +52,7 @@ test("the scheduled refresh runs the guarded NREL importer with repository secre
   const workflow = readFileSync(fileURLToPath(new URL("../.github/workflows/nrel-refresh.yml", import.meta.url)), "utf8");
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /concurrency:\s*\n\s*group: nrel-catalog-refresh\s*\n\s*cancel-in-progress: false/);
   assert.match(workflow, /npm run import:nrel/);
   for (const secret of ["NREL_API_KEY", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]) {
     assert.ok(workflow.includes(secret + ": ${{ secrets." + secret + " }}"));
