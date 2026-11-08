@@ -90,3 +90,17 @@ test("considers a later corridor charger when early chargers cannot finish the t
 
   assert.ok(plan?.stops.some((stop) => stop.chargerId === "needed"));
 });
+
+test("a long national corridor honors connector, battery reserve, and detour energy", () => {
+  const candidates = [
+    { ...charger("incompatible", 80, 0.3), connectorTypes: ["CHADEMO"], location: { lat: 39.55, lng: -105.78 } },
+    { ...charger("colorado", 90, 0.3), location: { lat: 39.64, lng: -106.37 }, detourMiles: 5 },
+    { ...charger("utah", 180, 0.3), location: { lat: 39.55, lng: -109.55 }, detourMiles: 5 },
+  ];
+  const plan = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 300, candidates });
+  assert.equal(plan?.outcome, "feasible");
+  assert.deepEqual(plan?.stops.map((stop) => stop.chargerId), ["colorado", "utah"]);
+  assert.ok(plan!.stops.every((stop) => stop.arrivalSocPercent >= 10 && stop.departureSocPercent <= 100));
+  const tooFar = planChargingStops({ vehicle, startSocPercent: 55, reserveSocPercent: 10, objective: "fastest", routeMiles: 300, candidates: candidates.map((candidate) => ({ ...candidate, detourMiles: 50 })) });
+  assert.equal(tooFar, null);
+});
