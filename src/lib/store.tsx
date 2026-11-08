@@ -3,10 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_VEHICLES,
-  MOCK_CHARGERS,
   MOCK_HOST_BOOKINGS,
   MOCK_RESERVATIONS,
-  MY_LISTINGS,
   type Charger,
   type HostBooking,
   type Reservation,
@@ -55,7 +53,7 @@ const initial: State = {
   vehicles: DEFAULT_VEHICLES,
   defaultVehicleId: "v1",
   reservations: MOCK_RESERVATIONS,
-  listings: MY_LISTINGS,
+  listings: [],
   hostBookings: MOCK_HOST_BOOKINGS,
   compare: [],
   settings: {
@@ -222,7 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       accountReady,
       set,
       allChargers,
-      getCharger: (id) => state.listings.find((c) => c.id === id) ?? MOCK_CHARGERS.find((c) => c.id === id),
+      getCharger: (id) => state.listings.find((c) => c.id === id),
       defaultVehicle: state.vehicles.find((v) => v.id === state.defaultVehicleId) ?? state.vehicles[0],
       toggleFavorite: (id) =>
         set((s) => ({

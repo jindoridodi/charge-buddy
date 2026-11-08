@@ -28,6 +28,25 @@ async function tripPage(t, overrides = {}) {
 const id = "00000000-0000-0000-0000-000000000055";
 const charger = { id, name: "Public test station", address: "Boston", connector_types: ["CCS"], operational_status: "E", availability_status: "unknown", imported_at: "2026-11-01T00:00:00Z", price_summary: { status: "unknown", price_per_kwh: null, observed_at: null } };
 
+test("anonymous discovery and detail do not fall back to sample chargers", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  page.setDefaultTimeout(3000);
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [], total: 0 } });
+    if (url.pathname === "/api/chargers/c1") return route.fulfill({ status: 404, json: { error: "Charger not found" } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers`);
+  await page.getByText("No public chargers match these filters.", { exact: true }).waitFor();
+  assert.equal(await page.getByText("My Garage Charger", { exact: true }).count(), 0);
+  await page.goto(`${origin}/chargers/c1`);
+  await page.getByText("Charger not found.", { exact: true }).waitFor();
+});
+
 before(async () => {
   server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "0"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" } });
   origin = await new Promise((resolve, reject) => {
