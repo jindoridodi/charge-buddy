@@ -69,7 +69,7 @@ export default function MapViewClient({ markers, activeId, onSelect, route, cent
 
   useEffect(() => {
     if (!map.current) return;
-    if (route && route.length > 1) map.current.fitBounds(L.latLngBounds(route), { padding: [40, 40] });
+    if (route && route.length > 1) map.current.fitBounds(L.latLngBounds([...route, ...markers.map((marker): [number, number] => [marker.lat, marker.lng])]), { padding: [40, 40] });
     else if (markers.length) map.current.fitBounds(L.latLngBounds(markers.map((marker) => [marker.lat, marker.lng])), { padding: [30, 30], maxZoom: 13 });
   }, [markers, route]);
 
