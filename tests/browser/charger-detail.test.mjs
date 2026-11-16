@@ -427,12 +427,12 @@ test("failed URL location search clears the previous origin", async (t) => {
   });
   await page.goto(`${origin}/chargers?q=Origin`);
   await page.getByText(/Origin · estimates use/).waitFor();
-  await page.getByRole("link", { name: "Home", exact: true }).first().click();
-  const search = page.locator('input').first();
+  await page.locator('a[href="/"]').first().click();
+  const search = page.getByPlaceholder("City, ZIP code, or address");
   await search.fill("Bad");
   await search.press("Enter");
   await page.getByText("Location failed").first().waitFor();
-  await page.getByRole("link", { name: "Compare Chargers", exact: true }).first().click();
+  await page.locator('a[href="/compare"]').first().click();
   await page.getByText(/set an origin to include travel/).waitFor();
 });
 
@@ -459,4 +459,52 @@ test("comparison keeps available chargers and allows removing an unavailable sel
   await page.getByRole("link", { name: "Second station" }).waitFor();
   await page.getByRole("row").filter({ hasText: "missing" }).getByRole("button", { name: "Remove" }).click();
   assert.equal(await page.getByRole("row").filter({ hasText: "missing" }).count(), 0);
+});
+
+test("settings cannot create an account by saving an anonymous profile", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await page.goto(`${origin}/settings`);
+  await page.getByText("Profile editing is unavailable.", { exact: false }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Save profile" }).count(), 0);
+  await page.getByRole("heading", { name: "Notifications (unavailable)" }).waitFor();
+  for (const toggle of await page.getByRole("switch").all()) assert.equal(await toggle.isDisabled(), true);
+});
+
+test("home location uses browser coordinates rather than a simulated city", async (t) => {
+  const context = await browser.newContext({ geolocation: { latitude: 42.36, longitude: -71.06 }, permissions: ["geolocation"] });
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: [], total: 0 } });
+    return route.continue();
+  });
+  await page.goto(origin);
+  const queried = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/chargers" && url.searchParams.get("lat") === "42.36" && url.searchParams.get("lng") === "-71.06";
+  });
+  await page.getByRole("button", { name: "Use current location" }).click();
+  await queried;
+  await page.getByText(/Selected origin · estimates use/).waitFor();
+});
+
+
+test("peer detail identifies host pricing and approximate location without claiming NREL attribution", async (t) => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === `/api/chargers/${id}`) return route.fulfill({ json: { charger: { ...charger, source: "peer", address: "Approximate location", price_summary: { status: "host", price_per_kwh: 0.25, observed_at: null } }, reports: [] } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/chargers/${id}`);
+  await page.getByRole("heading", { name: "Host-reported price", exact: true }).waitFor();
+  await page.getByText("Peer listing · approximate location.", { exact: false }).waitFor();
+  assert.equal(await page.getByText(/NREL source updated|No operator price provided by NREL/).count(), 0);
 });

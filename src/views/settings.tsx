@@ -21,7 +21,6 @@ export default function Page() {
   const app = useApp();
   const s = app.settings;
   const setS = (p: Partial<Settings>) => app.set((st) => ({ settings: { ...st.settings, ...p } }));
-  const [profile, setProfile] = useState({ name: app.user?.name ?? "", email: app.user?.email ?? "", phone: app.user?.phone ?? "" });
   const [nv, setNv] = useState({ nickname: "", make: "", model: "", year: 2024, batteryKwh: 60, efficiency: 3.5, connector: "CCS" as Connector });
 
   const addVehicle = () => {
@@ -39,12 +38,8 @@ export default function Page() {
       <PageHeader title="Settings" subtitle="Your profile, vehicles and preferences." />
       <Section className="grid max-w-4xl gap-6">
         <Card title="Profile">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Name"><Input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} /></Field>
-            <Field label="Email"><Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} /></Field>
-            <Field label="Phone"><Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></Field>
-          </div>
-          <Button onClick={() => { app.set({ user: { id: app.user?.id ?? "demo", ...profile, purpose: app.user?.purpose ?? "both" } }); toast.success("Profile saved"); }}>Save profile</Button>
+          <p className="text-sm">{app.user ? `${app.user.name} · ${app.user.email}` : "Sign in to save your vehicles, favorites and preferences across browsers."}</p>
+          <p className="text-sm text-muted-foreground">Profile editing is unavailable. Account identity comes from your verified sign-in.</p>
         </Card>
 
         <Card title="My vehicles">
@@ -80,14 +75,15 @@ export default function Page() {
           <Field label={`Default search radius: ${s.maxDistance} mi`}><Slider min={1} max={30} value={[s.maxDistance]} onValueChange={([v]) => setS({ maxDistance: v ?? 15 })} /></Field>
           <Field label={`Default host margin: ${s.defaultMargin}%`}><Slider min={0} max={100} step={5} value={[s.defaultMargin]} onValueChange={([v]) => setS({ defaultMargin: v ?? 40 })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Units"><NativeSelect value={s.units} onChange={(e) => setS({ units: e.target.value as "mi" | "km" })}><option value="mi">Miles</option><option value="km">Kilometers</option></NativeSelect></Field>
+            <Field label="Units" hint="Distance conversion is unavailable; estimates use miles."><NativeSelect value="mi" disabled><option value="mi">Miles</option></NativeSelect></Field>
             <Field label="Theme"><NativeSelect value={s.theme} onChange={(e) => setS({ theme: e.target.value as "light" | "dark" })}><option value="light">Light</option><option value="dark">Dark</option></NativeSelect></Field>
           </div>
         </Card>
 
-        <Card title="Notifications">
+        <Card title="Notifications (unavailable)">
+          <p className="text-sm text-muted-foreground">Email, push and booking reminders are not delivered in this release.</p>
           {([["notifyEmail", "Email notifications"], ["notifyPush", "Push notifications"], ["notifyBookings", "Booking updates & reminders"]] as const).map(([k, label]) => (
-            <label key={k} className="flex items-center justify-between"><span className="text-sm">{label}</span><Switch checked={s[k]} onCheckedChange={(v) => setS({ [k]: v })} /></label>
+            <label key={k} className="flex items-center justify-between"><span className="text-sm">{label}</span><Switch checked={false} disabled /></label>
           ))}
         </Card>
 

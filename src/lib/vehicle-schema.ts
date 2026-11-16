@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const vehicleSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   nickname: z.string().trim().min(1).max(100),
   make: z.string().trim().min(1).max(100),
   model: z.string().trim().min(1).max(100),

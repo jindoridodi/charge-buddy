@@ -74,6 +74,7 @@ export default function Page() {
         </div>
       </PageHeader>
       <Section>
+        <p className="mb-4 rounded-xl border bg-muted/30 p-4 text-sm">Reservations, booking requests and earnings below are demo examples. No bookings, payments or payouts are processed. Published listings and account favorites use the shared catalog.</p>
         {role === "driver" ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -91,8 +92,8 @@ export default function Page() {
                       <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
                         <div>
                           <p className="font-semibold">{c?.name ?? "Charger"}</p>
-                          <p className="text-sm text-muted-foreground">{r.date} Â· {r.start} Â· {r.durationHrs} hr Â· {r.kwh} kWh Â· {r.payment}</p>
-                          <p className="text-xs text-muted-foreground">#{r.id} Â· {r.status}</p>
+                          <p className="text-sm text-muted-foreground">{r.date} · {r.start} · {r.durationHrs} hr · {r.kwh} kWh · {r.payment}</p>
+                          <p className="text-xs text-muted-foreground">#{r.id} · {r.status}</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="font-bold">{money(r.total)}</span>
@@ -135,8 +136,8 @@ export default function Page() {
               {app.hostBookings.map((b) => (
                 <div key={b.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
                   <div>
-                    <p className="font-semibold">{b.driver} Â· {b.vehicle}</p>
-                    <p className="text-sm text-muted-foreground">{app.getCharger(b.chargerId)?.name} Â· {b.date} {b.start} Â· {b.kwh} kWh</p>
+                    <p className="font-semibold">{b.driver} · {b.vehicle}</p>
+                    <p className="text-sm text-muted-foreground">{app.getCharger(b.chargerId)?.name} · {b.date} {b.start} · {b.kwh} kWh</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold">{money(b.earnings)}</span>

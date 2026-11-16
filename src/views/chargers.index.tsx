@@ -59,6 +59,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
     const controller = new AbortController();
     setCatalog([]); setTotal(0); setLocationError(null);
     if (!locationSearch.query) { setLocationLabel(origin ? "Selected origin" : "Nationwide"); setLocationBusy(false); return; }
+    setOrigin(null);
     setLocationBusy(true);
     fetch(`/api/locations?q=${encodeURIComponent(locationSearch.query)}`, { signal: controller.signal }).then(async (response) => {
       const body = await response.json() as { places?: { label: string; location: Coordinates }[]; error?: string };
@@ -75,7 +76,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
   useEffect(() => { setPage(1); }, [query, origin, locationSearch, radius, connectors, levels, maxPrice, minPower, time, sort, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle]);
 
   useEffect(() => {
-    if (locationBusy || (locationSearch.query && !origin)) { setLoading(false); return; }
+    if (locationBusy || locationError || (locationSearch.query && !origin)) { setLoading(false); return; }
     const controller = new AbortController();
     const params = new URLSearchParams({ limit: "100", page: String(page), sort,
       q: query.trim(), radius: String(radius), maxPrice: String(maxPrice), minPower: String(minPower),
@@ -93,7 +94,7 @@ export default function FindChargers({ q = "" }: { q?: string }) {
       if (!controller.signal.aborted) setCatalogError(error instanceof Error ? error.message : "Could not load public catalog");
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); }), 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationSearch, retry, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle]);
+  }, [query, sort, page, origin, radius, connectors, levels, maxPrice, minPower, time, locationBusy, locationError, locationSearch, retry, quoteEnergy, quoteVehicleId, vehicles, defaultVehicle]);
 
   const markers = useMemo(() => [
     ...catalog.map((charger) => ({ id: charger.id, lat: charger.latitude, lng: charger.longitude, label: (() => { const total = catalogQuote(charger, origin, quoteEnergy, vehicles.find((v) => v.id === quoteVehicleId)?.efficiency ?? defaultVehicle?.efficiency ?? 3.5).total; return total == null ? "?" : `$${total.toFixed(2)}`; })() })),

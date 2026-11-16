@@ -8,7 +8,7 @@ const schema = z.object({
   revision: z.number().int().nonnegative(),
   favorites: z.array(z.string().min(1).max(100)).max(100),
   vehicles: z.array(vehicleSchema).max(20),
-  defaultVehicleId: z.string().uuid().nullable(),
+  defaultVehicleId: z.guid().nullable(),
   settings: z.object({ connectors: z.array(connector).max(4), maxDistance: z.number().finite().min(1).max(30), units: z.enum(["mi", "km"]), notifyEmail: z.boolean(), notifyPush: z.boolean(), notifyBookings: z.boolean(), defaultMargin: z.number().finite().min(0).max(100), theme: z.enum(["light", "dark"]) }),
 }).superRefine((value, context) => {
   if (value.defaultVehicleId && !value.vehicles.some((vehicle) => vehicle.id === value.defaultVehicleId)) context.addIssue({ code: z.ZodIssueCode.custom, message: "Default vehicle must belong to this account", path: ["defaultVehicleId"] });

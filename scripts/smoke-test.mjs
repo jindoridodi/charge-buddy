@@ -40,10 +40,11 @@ try {
   await check("/auth", "Supabase email/password");
   await check("/chargers", "Find Chargers");
   await check("/chargers?q=Willow", "Find Chargers");
-  await check("/chargers/c1", "Willow Glen Garage Charger");
+  // Detail is hydrated from the shared catalog, never a hardcoded demo record.
+  await check("/chargers/c1", "Loading charger");
   await check("/compare", "Compare Chargers");
   await check("/dashboard", "Welcome back");
-  await check("/list-charger", "Turn your home charger into extra income");
+  await check("/list-charger", "Share your charger with other drivers.");
   await check("/route-planner", "Route Planner");
   await check("/settings", "Your profile, vehicles and preferences");
   await check("/does-not-exist", "Page not found", 404);

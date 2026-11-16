@@ -31,10 +31,10 @@ function chargeMinutes(vehicle: PlanningVehicle, chargerKw: number, fromSoc: num
 
 export interface CorridorCandidate extends PlanningCharger { mileAlong: number; detourMiles: number; }
 export interface PlanningInput { vehicle: PlanningVehicle; startSocPercent: number; reserveSocPercent: number; objective: TripObjective; routeMiles: number; candidates: CorridorCandidate[]; }
-export interface PlanningResult { outcome: "feasible" | "search_bounds_reached"; stops: TripStop[]; totalChargeMinutes: number; estimatedCost: number | null; warnings: string[]; }
+export interface PlanningResult { outcome: "feasible" | "search_bounds_reached"; stops: TripStop[]; totalChargeMinutes: number; estimatedCost: number | null; arrivalSocPercent: number | null; warnings: string[]; }
 
 export function searchBoundsResult(): PlanningResult {
-  return { outcome: "search_bounds_reached", stops: [], totalChargeMinutes: 0, estimatedCost: null, warnings: ["A configured candidate or search-work limit was reached before all candidate routes could be evaluated."] };
+  return { outcome: "search_bounds_reached", stops: [], totalChargeMinutes: 0, estimatedCost: null, arrivalSocPercent: null, warnings: ["A configured candidate or search-work limit was reached before all candidate routes could be evaluated."] };
 }
 
 /**
@@ -60,7 +60,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
   while (queue.length && iterations++ < SEARCH_LIMITS.maxIterations) {
     queue.sort((a, b) => a.score - b.score);
     const current = queue.shift()!;
-    if (current.index === locations.length - 1) return { outcome: "feasible", stops: current.stops, totalChargeMinutes: current.chargeMinutes, estimatedCost: current.cost, warnings: current.stops.some((stop) => stop.pricePerKwh == null) ? ["One or more stops have unknown pricing."] : [] };
+    if (current.index === locations.length - 1) return { outcome: "feasible", stops: current.stops, totalChargeMinutes: current.chargeMinutes, estimatedCost: current.cost, arrivalSocPercent: Number((current.energyKwh / vehicle.usableBatteryKwh * 100).toFixed(9)), warnings: current.stops.some((stop) => stop.pricePerKwh == null) ? ["One or more stops have unknown pricing."] : [] };
     const known = best.get(key(current));
     if (known != null && known <= current.score) continue;
     best.set(key(current), current.score);
@@ -110,7 +110,7 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
         const stops = [...current.stops];
         if (addedKwh > 0) {
           const charger = nodes[current.index - 1]!;
-          stops.push({ chargerId: charger.id, chargerName: charger.name, location: charger.location, arrivalSocPercent: Math.round(current.energyKwh / vehicle.usableBatteryKwh * 100), departureSocPercent: Math.round(departureKwh / vehicle.usableBatteryKwh * 100), energyAddedKwh: Math.round(addedKwh * 10) / 10, chargeMinutes: Math.round(addedMinutes), pricePerKwh: charger.pricePerKwh, estimatedChargeCost: charger.pricePerKwh == null ? null : Math.round(addedCost * 100) / 100, source: charger.source });
+          stops.push({ chargerId: charger.id, chargerName: charger.name, location: charger.location, arrivalSocPercent: Number((current.energyKwh / vehicle.usableBatteryKwh * 100).toFixed(9)), departureSocPercent: Number((departureKwh / vehicle.usableBatteryKwh * 100).toFixed(9)), energyAddedKwh: Math.round(addedKwh * 10) / 10, chargeMinutes: Math.round(addedMinutes), pricePerKwh: charger.pricePerKwh, estimatedChargeCost: charger.pricePerKwh == null ? null : Math.round(addedCost * 100) / 100, source: charger.source });
         }
         queue.push({ index: nextIndex, energyKwh: arrivalKwh, score: nextScore, cost: nextCost, chargeMinutes: current.chargeMinutes + addedMinutes, stops });
         if (queue.length >= SEARCH_LIMITS.maxQueuedStates) return searchBoundsResult();

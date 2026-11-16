@@ -99,3 +99,16 @@ test("successful trip results disclose the bounds actually applied", async (t) =
   assert.match(assumptions, /12 miles/);
   assert.match(assumptions, /12 seconds/);
 });
+
+test("trip legs retain evaluated battery precision instead of recomputing from rounded stops", async (t) => {
+  configureTrip(t);
+  const vehicle = VEHICLE_CATALOG[0]!;
+  const reserve = 10.4;
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, vehicle, 45, reserve, "fastest", 12);
+  assert.equal(trip.outcome, "feasible");
+  assert.equal(trip.stops.length, 1);
+  assert.ok(Math.abs(trip.legs.at(-1)!.arrivalSocPercent - reserve) < 1e-9);
+  const departure = trip.stops[0]!.departureSocPercent;
+  assert.ok(Math.abs(departure - Math.round(departure)) > 0.01, "Fixture requires a fractional departure charge");
+  assert.equal(trip.legs[1]!.departureSocPercent, departure);
+});

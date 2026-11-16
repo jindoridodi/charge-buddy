@@ -9,7 +9,7 @@ import { PageHeader, Section } from "@/components/PageHeader";
 const POINTS = [
   { icon: Home, t: "Neighborhood charging", d: "Thousands of home chargers sit idle most of the day. We make them available to drivers nearby." },
   { icon: PiggyBank, t: "Transparent pricing", d: "See the full cost up front — electricity, host fee and even the drive there." },
-  { icon: Users, t: "Hosts earn", d: "Set your own price and hours, approve every booking, and get paid for sharing." },
+  { icon: Users, t: "Hosts earn", d: "Publish a charger and manage its price and visibility. Booking approvals and payouts are unavailable." },
   { icon: Leaf, t: "Cleaner commutes", d: "More places to charge means more people can confidently go electric." },
 ];
 

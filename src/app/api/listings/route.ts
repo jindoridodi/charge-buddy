@@ -25,7 +25,7 @@ async function save(request: Request) {
   try {
     const body = await requestJson(request);
     const parsed = schema.safeParse(body);
-    const id = request.method === "PATCH" && body && typeof body === "object" && "id" in body ? z.string().uuid().safeParse(body.id) : null;
+    const id = request.method === "PATCH" && body && typeof body === "object" && "id" in body ? z.guid().safeParse(body.id) : null;
     if (!parsed.success || (request.method === "PATCH" && !id?.success)) return Response.json({ error: "Invalid listing" }, { status: 400 });
     const { supabase, user } = await requireUser(request);
     if (!user) return Response.json({ error: "Sign in to manage listings" }, { status: 401 });

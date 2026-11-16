@@ -4,6 +4,7 @@ Use this directory selectively. Source files, `package.json`, migrations, and te
 
 | Task | Read |
 | --- | --- |
+| Review current GitHub issue progress and integration evidence | [Issue audit](ISSUE_AUDIT.md). |
 | Confirm current behavior or a file location | Source, `package.json`, migrations, and tests; use [Current state](CURRENT_STATE.md) only for its dated baseline. |
 | Change product scope or prove acceptance | [Requirements](REQUIREMENTS.md) and [Testing](TESTING.md). |
 | Change data boundaries, cost rules, or trip planning | [Architecture](ARCHITECTURE.md). |
