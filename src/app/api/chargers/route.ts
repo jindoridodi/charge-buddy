@@ -16,7 +16,7 @@ const filtersSchema = z.object({
   levels: z.array(z.enum(["Level 1", "Level 2", "DC Fast"])),
   operational: z.enum(["true", "false"]).default("false"),
   kwh: z.coerce.number().positive().max(500).default(30),
-  efficiency: z.coerce.number().positive().max(20).default(3.5),
+  efficiency: z.coerce.number().finite().positive().default(3.5),
 }).refine((value) => (value.lat == null) === (value.lng == null));
 
 function escapedSearch(value: string) {
@@ -68,3 +68,4 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not load catalog" }, { status: 500 });
   }
 }
+
