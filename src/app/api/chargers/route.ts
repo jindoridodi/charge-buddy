@@ -68,4 +68,3 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not load catalog" }, { status: 500 });
   }
 }
-

@@ -41,4 +41,3 @@ revoke execute on function public.read_account_data() from public;
 revoke execute on function public.save_account_data(bigint, text[], jsonb, uuid, text[], numeric, text, boolean, boolean, boolean, numeric, text) from public;
 grant execute on function public.read_account_data() to authenticated;
 grant execute on function public.save_account_data(bigint, text[], jsonb, uuid, text[], numeric, text, boolean, boolean, boolean, numeric, text) to authenticated;
-

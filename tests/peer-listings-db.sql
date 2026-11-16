@@ -33,4 +33,3 @@ begin
   if (select array_agg(name) from public.search_catalog_ranked(null, null, 15, '{}', '{}', 0.5, 0, false, 20, 4) where name in ('Peer test', 'Unknown')) is distinct from array['Peer test', 'Unknown'] then raise exception 'peer price did not rank ahead of unknown'; end if;
 end $$;
 reset role;
-

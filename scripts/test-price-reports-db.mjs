@@ -24,4 +24,3 @@ run_sql /tests/price-report-admin.sql`,
 
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;
-
