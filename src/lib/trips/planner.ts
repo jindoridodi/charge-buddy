@@ -15,7 +15,7 @@ export function isCompatible(vehicle: PlanningVehicle, charger: Pick<PlanningCha
   return charger.publicAccess && charger.availability !== "unavailable" && charger.powerKw != null && charger.powerKw > 0 && charger.connectorTypes.some((connector) => normalizeConnector(connector) === vehicle.connector);
 }
 
-function chargeMinutes(vehicle: PlanningVehicle, chargerKw: number, fromSoc: number, toSoc: number) {
+export function chargeMinutes(vehicle: PlanningVehicle, chargerKw: number, fromSoc: number, toSoc: number) {
   if (toSoc <= fromSoc) return 0;
   const curve = [...vehicle.chargeCurve].sort((a, b) => a.socPercent - b.socPercent);
   let minutes = 0;

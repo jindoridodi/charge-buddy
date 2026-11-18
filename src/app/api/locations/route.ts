@@ -10,5 +10,5 @@ export async function GET(request: NextRequest) {
   const rate = limitLocationRequest(request);
   if (!rate.allowed) return Response.json({ error: "Too many location searches. Try again shortly.", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
   try { return Response.json({ places: await searchPlaces(query) }); }
-  catch (error) { return Response.json({ error: "Geocoding is unavailable. Configure the self-hosted Nominatim service.", code: error instanceof Error ? error.message : "GEOCODING_UNAVAILABLE" }, { status: 503 }); }
+  catch { return Response.json({ error: "Location search is unavailable. Please try again later.", code: "GEOCODING_UNAVAILABLE" }, { status: 503 }); }
 }

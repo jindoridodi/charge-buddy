@@ -167,6 +167,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t py-5 text-center text-xs text-muted-foreground">
         © 2026 Charge Buddy · Peer charger time slots can be reserved. Payments, payouts, notifications, uploads, reviews, host verification and charger control are unavailable.
+        <span> · Location and routing data: <a className="underline" href="https://stadiamaps.com/attribution/">Stadia Maps and contributors</a></span>
       </div>
     </footer>
   );

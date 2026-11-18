@@ -1,5 +1,9 @@
 # Self-hosted routing services
 
+## Hosted Stadia Maps option
+
+For a hosted setup, create a Stadia Maps property and API key at https://client.stadiamaps.com/ and add `STADIA_MAPS_API_KEY` to the server's `.env.local`. Restart the application after changing the environment. The key is sent in an authorization header by the server and must not use a `NEXT_PUBLIC_` prefix. Stadia takes precedence over the self-hosted URLs below when the key is set. Use an appropriate Stadia plan and observe its attribution and usage terms. Charger stops still depend on the Supabase catalog and its NREL import.
+
 ChargeBuddy includes a Docker Compose stack for Valhalla and Nominatim. Both APIs bind to `127.0.0.1` by default, so they are available to the application server on the VM but are not public internet services.
 
 ## Start the stack

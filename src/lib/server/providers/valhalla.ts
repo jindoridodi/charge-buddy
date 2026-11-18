@@ -18,7 +18,11 @@ async function request<T>(path: string, body: object): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ROUTING_TIMEOUT_MS);
   try {
-    const response = await fetch(`${baseUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal, cache: "no-store" });
+    const key = process.env["STADIA_MAPS_API_KEY"]?.trim();
+    const url = key ? "https://api.stadiamaps.com/route/v1" : `${baseUrl()}${path}`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (key) headers["authorization"] = `Stadia-Auth ${key}`;
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal, cache: "no-store" });
     if (!response.ok) {
       if (response.status === 400) {
         const error = await response.json().catch(() => null) as { error_code?: number } | null;
