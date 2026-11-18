@@ -1,5 +1,7 @@
 # ChargeBuddy issue audit — November 16, 2026
 
+> Historical checkpoint. For the November 17 database migration and live listing/reservation verification, see [Shared listings and reservations](SHARED_LISTINGS_RESERVATIONS.md). Current reservations extend the scope described below.
+
 The UI is largely built, but the shared application is not release-complete. Much of the missing functionality already exists on the integration branch. An open issue can have substantial implementation without meeting its acceptance criteria. This audit does not close any GitHub issue.
 
 Sources: Project_Proposal.pdf (two pages), live GitHub issue/PR descriptions and checks, main at `9066d2407c2c5ac4ed81957a2ed77829647a9243`, integration at `3abf6068a3a2ff3815f385f596d44142e4c7a081`, and the source/tests on those branches. The October planning documents are historical snapshots.

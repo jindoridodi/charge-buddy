@@ -1,7 +1,7 @@
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
 export interface PeerListing {
-  id: string; name: string; address: string; area: string; connector: string; power_kw: number; price: number; published: boolean;
+  id: string; name: string; address: string; area: string; connector: string; power_kw: number; price: number; published: boolean; approximateLocation?: { lat: number; lng: number }; latitude?: number; longitude?: number;
 }
 
 export async function listingsRequest(method: "GET" | "POST" | "PATCH", listing?: Partial<PeerListing>) {

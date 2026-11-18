@@ -3,8 +3,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_VEHICLES,
-  MOCK_HOST_BOOKINGS,
-  MOCK_RESERVATIONS,
   type Charger,
   type HostBooking,
   type Reservation,
@@ -55,9 +53,9 @@ const initial: State = {
   favorites: [],
   vehicles: DEFAULT_VEHICLES,
   defaultVehicleId: "v1",
-  reservations: MOCK_RESERVATIONS,
+  reservations: [],
   listings: [],
-  hostBookings: MOCK_HOST_BOOKINGS,
+  hostBookings: [],
   compare: [],
   quoteOrigin: null,
   quoteEnergy: 30,

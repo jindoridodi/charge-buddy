@@ -1,5 +1,7 @@
 # Supabase and NREL setup
 
+For database-backed Peer listing publication and reservation setup/current verification, see [Shared listings and reservations](SHARED_LISTINGS_RESERVATIONS.md).
+
 1. Create a free Supabase project, then copy its project URL and anon key to `.env.local` from `.env.example`.
 2. In Supabase SQL Editor, run the migrations in [`supabase/migrations`](../supabase/migrations) in filename order.
 3. Enable Email authentication in **Authentication → Providers → Email**. For local demonstrations, disable email confirmation if immediate sign-in is preferred.
@@ -30,7 +32,7 @@ Apply `202611010002_admin_price_report_visibility.sql` after earlier migrations 
 - A report reaches `needs_review` after three flags from distinct users. It remains visible in report history, but is excluded from rankings.
 - Apply `202611010001_serialize_report_flags.sql` after the earlier migrations. It locks each report before counting flags so concurrent submissions cannot miss that threshold; existing ownership policies and public report grants stay unchanged.
 - Chargers without a current community report display **Price unknown** in ordinary discovery and are excluded from electricity-price-ranked results before pagination.
-- Peer-hosted listing prices remain authoritative in local listing records.
+- Peer-hosted listing prices are authoritative in the database-backed public projection.
 
 ## Price-report permission repair
 
@@ -44,7 +46,7 @@ Apply `202610280002_corridor_segments.sql` and `202610280003_catalog_search.sql`
 
 Then apply `202610280004_utc_price_freshness.sql` so catalog price freshness uses UTC observation dates even when a database connection changes its session time zone.
 
-Discovery starts nationwide. Set a U.S. location to apply a clearly labeled straight-line radius, use the separate text filter to narrow results, and load subsequent pages as needed. Local demo listings remain browser-only and appear separately; shared Peer listing persistence remains future work.
+Discovery starts nationwide. Set a U.S. location to apply a clearly labeled straight-line radius, use the separate text filter to narrow results, and load subsequent pages as needed. Published Peer listings are stored in Supabase and appear in the shared public catalog after the Peer listing migrations are applied.
 
 Import reconciliation and trip corridor reads page through all records in stable ID order. Trip pricing reads the current-price view in batches of 50 station IDs; a failed price read returns a service failure rather than an infeasible plan. Deactivated imported stations return not found from the public detail API.
 

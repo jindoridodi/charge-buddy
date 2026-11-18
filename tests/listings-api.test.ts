@@ -53,3 +53,22 @@ test("host prices are labeled separately from community reports", async () => {
   const summary = catalogPriceSummary({ source: "peer", host_price_per_kwh: 0.4 } as Parameters<typeof catalogPriceSummary>[0]);
   assert.deepEqual(summary, { status: "host", price_per_kwh: 0.4, observed_at: null });
 });
+
+test("a host can publish with approximate coordinates without a geocoding service", async (t) => {
+  const keys = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "NOMINATIM_URL"];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://listing-test.invalid"; process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-key"; delete process.env.NOMINATIM_URL;
+  t.after(() => { for (const key of keys) { if (previous[key] == null) delete process.env[key]; else process.env[key] = previous[key]; } });
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, options?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/auth/v1/user") return Response.json({ id: "owner" });
+    assert.equal(url.pathname, "/rest/v1/peer_listings");
+    const body = JSON.parse(String(options?.body));
+    assert.equal(body.latitude, 42.4); assert.equal(body.longitude, -71.1);
+    assert.equal("approximateLocation" in body, false);
+    assert.equal("owner_id" in body, false);
+    return Response.json({ ...body, id: "00000000-0000-0000-0000-000000000201" });
+  });
+  const response = await POST(new Request("https://app.test/api/listings", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer token" }, body: JSON.stringify({ name: "Charger", address: "Private street", area: "Boston, MA", connector: "CCS", power_kw: 7.2, price: 0.4, published: true, approximateLocation: { lat: 42.4, lng: -71.1 } }) }));
+  assert.equal(response.status, 201);
+});

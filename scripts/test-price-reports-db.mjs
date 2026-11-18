@@ -18,6 +18,7 @@ run_sql /tests/account-db.sql
 run_sql /tests/price-report-permissions.sql
 run_sql /tests/catalog-db.sql
 run_sql /tests/peer-listings-db.sql
+run_sql /tests/reservations-db.sql
 run_sql /tests/price-report-concurrency.sql
 run_sql /tests/price-report-admin.sql`,
 ], { stdio: "inherit" });

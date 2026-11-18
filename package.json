@@ -17,7 +17,8 @@
     "test:reports:db": "node scripts/test-price-reports-db.mjs",
     "test:rate-limit": "tsx --import ./scripts/test-setup.mjs --test tests/rate-limit.test.ts",
     "test:trip": "tsx --import ./scripts/test-setup.mjs --test tests/trip-planner.test.ts",
-    "import:nrel": "node scripts/import-nrel.mjs"
+    "import:nrel": "node scripts/import-nrel.mjs",
+    "verify:shared-listings": "node --import tsx --import ./scripts/test-setup.mjs scripts/verify-shared-listings.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

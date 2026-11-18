@@ -194,7 +194,7 @@ test("public discovery lets a charger be saved as a favorite", async (t) => {
   await favorite.click();
   assert.equal(await favorite.getAttribute("aria-pressed"), "true");
   await page.getByRole("link", { name: "Dashboard", exact: true }).click();
-  await page.getByRole("tab", { name: "Favorites", exact: true }).click();
+  await page.getByRole("heading", { name: "Favorites", exact: true }).waitFor();
   await page.getByText(charger.name, { exact: true }).waitFor();
 });
 
@@ -507,4 +507,72 @@ test("peer detail identifies host pricing and approximate location without claim
   await page.getByRole("heading", { name: "Host-reported price", exact: true }).waitFor();
   await page.getByText("Peer listing · approximate location.", { exact: false }).waitFor();
   assert.equal(await page.getByText(/NREL source updated|No operator price provided by NREL/).count(), 0);
+});
+
+test("a published listing is discoverable and reservable in a separate signed-in browser", async (t) => {
+  const hostId = "00000000-0000-0000-0000-000000000101", driverId = "00000000-0000-0000-0000-000000000102";
+  const listingId = "00000000-0000-0000-0000-000000000201", reservationId = "00000000-0000-0000-0000-000000000301";
+  let listing = null, booking = null;
+  async function signedPage(userId, purpose) {
+    const context = await browser.newContext({ timezoneId: "UTC" });
+    t.after(() => context.close());
+    await context.addInitScript(({ userId, purpose }) => {
+      const expires = Math.floor(Date.now() / 1000) + 3600;
+      const accessToken = `${btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${btoa(JSON.stringify({ sub: userId, exp: expires, role: "authenticated" }))}.test`;
+      localStorage.setItem("sb-catalog-test-auth-token", JSON.stringify({ access_token: accessToken, refresh_token: "test-refresh", expires_at: expires, expires_in: 3600, token_type: "bearer", user: { id: userId, email: "test@example.invalid", aud: "authenticated", role: "authenticated", user_metadata: { full_name: purpose, purpose } } }));
+    }, { userId, purpose });
+    await context.route("**/*", async (route) => {
+      const url = new URL(route.request().url()), method = route.request().method();
+      if (url.origin !== origin) return route.abort();
+      if (url.pathname === "/api/account") return route.fulfill({ json: { revision: 0, favorites: [], vehicles: [], defaultVehicleId: null, settings: null } });
+      if (url.pathname === "/api/listings") {
+        if (method === "GET") return route.fulfill({ json: { listings: userId === hostId && listing ? [listing] : [] } });
+        listing = { ...route.request().postDataJSON(), id: listingId };
+        return route.fulfill({ status: 201, json: { listing } });
+      }
+      const publicListing = listing && { ...charger, id: listingId, name: listing.name, source: "peer", address: "Approximate location", city: "Boston", state: "MA", latitude: 42.4, longitude: -71.1, connector_types: ["CCS"], power_kw: 7.2, price_summary: { status: "host", price_per_kwh: 0.4, observed_at: null } };
+      if (url.pathname === "/api/chargers") return route.fulfill({ json: { chargers: publicListing ? [publicListing] : [], total: publicListing ? 1 : 0 } });
+      if (url.pathname === `/api/chargers/${listingId}`) return route.fulfill({ json: { charger: publicListing, reports: [] } });
+      if (url.pathname === "/api/reservations") {
+        if (method === "GET") return route.fulfill({ json: { reservations: booking ? [booking] : [] } });
+        if (method === "PATCH") booking = { ...booking, status: "cancelled" };
+        else {
+          const body = route.request().postDataJSON();
+          assert.equal(body.listingId, listingId);
+          assert.equal("driver_id" in body, false);
+          booking = { id: reservationId, listing_id: listingId, driver_id: driverId, host_id: hostId, charger_name: listing.name, area: "Boston, MA", connector: "CCS", starts_at: body.startsAt, ends_at: body.endsAt, requested_kwh: body.requestedKwh, price_per_kwh: 0.4, estimated_total: body.requestedKwh * 0.4, status: "confirmed", created_at: new Date().toISOString() };
+        }
+        return route.fulfill({ status: method === "POST" ? 201 : 200, json: { reservation: booking } });
+      }
+      return route.continue();
+    });
+    const page = await context.newPage(); page.setDefaultTimeout(7000); return page;
+  }
+  const host = await signedPage(hostId, "host"), driver = await signedPage(driverId, "driver");
+  await host.goto(`${origin}/list-charger`);
+  await host.getByRole("button", { name: /host/i }).waitFor();
+  await host.getByLabel("Listing name", { exact: true }).fill("Persisted peer charger");
+  await host.getByLabel("Street address", { exact: false }).fill("123 Private Street");
+  await host.getByLabel("City and state", { exact: false }).fill("Boston, MA");
+  await host.getByRole("combobox").selectOption("CCS");
+  await host.getByLabel("Price ($/kWh)").fill("0.4");
+  await host.getByLabel("Map latitude", { exact: true }).fill("42.4");
+  await host.getByLabel("Map longitude", { exact: true }).fill("-71.1");
+  await host.getByRole("button", { name: "Save listing", exact: true }).click();
+  await host.getByText("Persisted peer charger", { exact: true }).waitFor();
+  await driver.goto(`${origin}/chargers`);
+  await driver.getByRole("button", { name: /driver/i }).waitFor();
+  await driver.getByRole("heading", { name: "Persisted peer charger", exact: true }).click();
+  await driver.getByLabel("Reservation start", { exact: true }).fill(new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 16));
+  await driver.getByLabel("Requested charging energy (kWh)", { exact: true }).fill("5");
+  await driver.getByRole("button", { name: "Reserve time slot", exact: true }).click();
+  await driver.getByText("Reservation confirmed", { exact: true }).waitFor();
+  await driver.getByRole("link", { name: "View my reservations", exact: false }).click();
+  await driver.getByText(`Reference: ${reservationId}`, { exact: true }).waitFor();
+  await host.reload();
+  await host.getByText(`Reference: ${reservationId}`, { exact: true }).waitFor();
+  await driver.getByRole("button", { name: "Cancel reservation", exact: true }).click();
+  await driver.getByText("Cancelled", { exact: true }).waitFor();
+  await host.getByRole("button", { name: "Refresh reservations", exact: true }).click();
+  await host.getByText("Cancelled", { exact: true }).waitFor();
 });

@@ -166,7 +166,7 @@ export function SiteFooter() {
         ))}
       </div>
       <div className="border-t py-5 text-center text-xs text-muted-foreground">
-        © 2026 Charge Buddy · Reservations, payments, payouts, notifications, uploads, reviews, host verification and charger control are unavailable. Booking and earnings examples are demos.
+        © 2026 Charge Buddy · Peer charger time slots can be reserved. Payments, payouts, notifications, uploads, reviews, host verification and charger control are unavailable.
       </div>
     </footer>
   );

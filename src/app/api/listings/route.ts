@@ -6,6 +6,7 @@ import { searchPlaces } from "@/lib/server/providers/nominatim";
 const schema = z.object({
   name: z.string().trim().min(1).max(100), address: z.string().trim().min(1).max(200), area: z.string().trim().max(100).regex(/^[A-Za-z .'-]+, [A-Z]{2}$/),
   connector: z.enum(["J1772", "CCS", "NACS", "CHAdeMO"]), power_kw: z.number().finite().positive().max(1000), price: z.number().finite().positive().lt(10), published: z.boolean(),
+  approximateLocation: z.object({ lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180) }).optional(),
 });
 
 export async function GET(request: Request) {
@@ -38,12 +39,14 @@ async function save(request: Request) {
       previousArea = existing.area;
       if (existing.area === parsed.data.area) location = existing;
     }
+    if (parsed.data.approximateLocation) location = { latitude: parsed.data.approximateLocation.lat, longitude: parsed.data.approximateLocation.lng };
     if (!location) {
       const places = await searchPlaces(parsed.data.area);
       if (!places[0]) return Response.json({ error: "Could not find that area" }, { status: 400 });
       location = { latitude: places[0].location.lat, longitude: places[0].location.lng };
     }
-    const listing = { ...parsed.data, latitude: location.latitude, longitude: location.longitude };
+    const { approximateLocation: _approximateLocation, ...fields } = parsed.data;
+    const listing = { ...fields, latitude: location.latitude, longitude: location.longitude };
     const query = request.method === "PATCH" ? supabase.from("peer_listings").update(listing).eq("id", id!.data!).eq("owner_id", user.id).eq("area", previousArea!) : supabase.from("peer_listings").insert(listing);
     const { data, error } = await query.select().maybeSingle();
     if (error) throw error;
@@ -51,6 +54,6 @@ async function save(request: Request) {
     return Response.json({ listing: data }, { status: request.method === "POST" ? 201 : 200 });
   } catch (error) {
     if (error instanceof PayloadTooLargeError) return Response.json({ error: error.message }, { status: 413 });
-    return Response.json({ error: "Could not save listing" }, { status: 503 });
+    return Response.json({ error: error instanceof Error && /GEOCODING/.test(error.message) ? "Address search is unavailable. Set an approximate map location or use your current location." : "Could not save listing. Check that the listing migrations are installed." }, { status: 503 });
   }
 }
