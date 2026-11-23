@@ -107,20 +107,28 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
   let remainingCandidates = candidates;
   for (let attempt = 0; result?.outcome === "feasible" && attempt < 5; attempt++) {
     const stops = result.stops.map((stop) => ({ ...stop }));
+    const failedAccess = new Set<string>();
+    let ambiguousFailure = false;
     // Bound provider work even when a long corridor contains many stations.
     if (stops.length > 20) result = searchBoundsResult();
     else {
       const points = [origin, ...stops.map((stop) => stop.location), destination];
       try {
         const routes = stops.length ? await roadRouteVia(points) : [road];
-        if (stops.length && (routes.some((leg, i) => !connects(leg, points[i]!, points[i + 1]!)) || routes.slice(1).some((leg, i) => !samePoint(routes[i]!.coordinates.at(-1)!, leg.coordinates[0]!)))) result = searchBoundsResult();
+        if (stops.length && (routes.some((leg, i) => !connects(leg, points[i]!, points[i + 1]!)) || routes.slice(1).some((leg, i) => !samePoint(routes[i]!.coordinates.at(-1)!, leg.coordinates[0]!)))) { result = searchBoundsResult(); ambiguousFailure = true; }
         // Check road access in both directions to the nearest point on the original corridor.
         const accessPoints = stops.flatMap((stop) => {
           const corridor = closestRoutePoint(stop.location, road.coordinates).location;
           return [[corridor, stop.location], [stop.location, corridor]] as const;
         });
-        const access = await Promise.all(accessPoints.map(([from, to]) => roadRoute(from, to)));
-        if (access.some((leg, i) => leg.miles > maxDetourMiles + 1e-9 || !connects(leg, accessPoints[i]![0], accessPoints[i]![1]))) result = searchBoundsResult();
+        const access = await Promise.all(accessPoints.map(async ([from, to]) => {
+          try { return await roadRoute(from, to); }
+          catch (error) { if (error instanceof RoutingLocationError) return null; throw error; }
+        }));
+        access.forEach((leg, i) => {
+          if (!leg || leg.miles > maxDetourMiles + 1e-9 || !connects(leg, accessPoints[i]![0], accessPoints[i]![1])) failedAccess.add(stops[Math.floor(i / 2)]!.chargerId);
+        });
+        if (failedAccess.size) result = searchBoundsResult();
         let energy = vehicle.usableBatteryKwh * startSocPercent / 100;
         let cost: number | null = 0;
         let charging = 0;
@@ -129,13 +137,13 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
           const departureSocPercent = energy / vehicle.usableBatteryKwh * 100;
           energy -= leg.miles * vehicle.consumptionWhPerMile / 1000 * DEFAULT_BUFFER;
           const arrivalSocPercent = energy / vehicle.usableBatteryKwh * 100;
-          if (arrivalSocPercent < reserveSocPercent - 1e-9 && !(i === 0 && stops.length && leg.miles === 0)) { result = searchBoundsResult(); break; }
+          if (arrivalSocPercent < reserveSocPercent - 1e-9 && !(i === 0 && stops.length && leg.miles === 0)) { result = searchBoundsResult(); ambiguousFailure = true; break; }
           legs.push({ departureSocPercent, arrivalSocPercent, distanceMiles: Math.round(leg.miles * 10) / 10, driveMinutes: Math.round(leg.minutes) });
           const stop = stops[i];
           if (stop) {
             const required = vehicle.usableBatteryKwh * reserveSocPercent / 100 + routes[i + 1]!.miles * vehicle.consumptionWhPerMile / 1000 * DEFAULT_BUFFER;
             const target = Math.max(energy, required, vehicle.usableBatteryKwh * stop.departureSocPercent / 100);
-            if (target > vehicle.usableBatteryKwh + 1e-9) { result = searchBoundsResult(); break; }
+            if (target > vehicle.usableBatteryKwh + 1e-9) { result = searchBoundsResult(); ambiguousFailure = true; break; }
             const departureSoc = Math.min(target / vehicle.usableBatteryKwh * 100, 100);
             const candidate = candidates.find((c) => c.id === stop.chargerId)!;
             const added = target - energy;
@@ -154,14 +162,14 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
           driveMinutes = routes.reduce((sum, leg) => sum + leg.minutes, 0);
         }
       } catch (error) {
-        if (error instanceof RoutingLocationError) result = searchBoundsResult();
+        if (error instanceof RoutingLocationError) { result = searchBoundsResult(); ambiguousFailure = true; }
         else throw error;
       }
     }
     if (result.outcome === "feasible") break;
     legs = [];
     if (!longSearch || attempt === 4 || !stops.length) break;
-    const rejected = new Set(stops.map((stop) => stop.chargerId));
+    const rejected = !ambiguousFailure && failedAccess.size ? failedAccess : new Set(stops.map((stop) => stop.chargerId));
     remainingCandidates = remainingCandidates.filter((candidate) => !rejected.has(candidate.id));
     result = planLongTrip({ vehicle, startSocPercent, reserveSocPercent, objective, roadMiles: road.miles, candidates: remainingCandidates, truncated }) ?? searchBoundsResult();
   }

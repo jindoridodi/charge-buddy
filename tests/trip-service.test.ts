@@ -267,3 +267,20 @@ test("a long trip retries another charger when the first choice exceeds the road
   assert.equal(trip.outcome, "feasible");
   assert.equal(trip.stops[0]?.chargerId, "0.9");
 });
+
+test("a retry keeps valid stops shared with a rejected multi-stop plan", async (t) => {
+  configureTrip(t);
+  const stations = [0.7, 0.8, 1.7].map((longitude) => ({ id: String(longitude), name: String(longitude), latitude: 0.01, longitude, connector_types: ["NACS"], power_kw: 150, source: "nrel", public_access: true, availability_status: "unknown", source_updated_at: null, community_price_per_kwh: null }));
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://catalog-test.invalid") return Response.json(stations);
+    const locations = JSON.parse(String(init?.body)).locations;
+    if (locations.length > 2) return Response.json({ trip: { legs: locations.slice(1).map((point: { lat: number; lon: number }, i: number) => ({ shape: shapeFor([locations[i], point]), summary: { length: 140, time: 6000 } })) } });
+    const baseline = locations[0].lon === 0 && locations[1].lon === 2;
+    const badAccess = locations.every((point: { lon: number }) => Math.abs(point.lon - 0.8) < 0.0001);
+    return Response.json({ trip: { summary: { length: baseline ? 450 : badAccess ? 20 : 1, time: 6000 }, legs: [{ shape: shapeFor(locations) }] } });
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 80, 10, "fastest", 12);
+  assert.equal(trip.outcome, "feasible");
+  assert.deepEqual(trip.stops.map((stop) => stop.chargerId), ["0.7", "1.7"]);
+});
