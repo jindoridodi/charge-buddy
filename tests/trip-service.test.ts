@@ -15,7 +15,8 @@ function configureTrip(t: test.TestContext, failure = false, preceding = 0) {
     if (url.origin === config.VALHALLA_URL) {
       const locations = JSON.parse(String(init?.body)).locations;
       const direct = locations[0].lon === 0 && locations[1].lon === 2;
-      const miles = direct ? 180 : station.latitude ? 100 : 90;
+      const access = locations[0].lon === 1 && locations[1].lon === 1;
+      const miles = direct ? 180 : access ? (station.latitude ? 10 : 0) : station.latitude ? 100 : 90;
       return Response.json({ trip: { summary: { length: miles, time: direct ? 11760 : station.latitude ? 6540 : 5880 }, legs: [{ shape: "???_gayB" }] } });
     }
     assert.equal(url.origin, config.NEXT_PUBLIC_SUPABASE_URL);
@@ -176,4 +177,22 @@ test("road detours exceeding the limit do not produce a feasible plan", async (t
   const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 50, 10, "fastest", 12);
   assert.equal(trip.outcome, "search_bounds_reached");
   assert.deepEqual(trip.stops, []);
+});
+
+test("recalculates charging when the road leg needs more energy", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid") {
+      const locations = JSON.parse(String(init?.body)).locations;
+      if (locations[0].lon === 1 && locations[1].lon === 2) return Response.json({ trip: { summary: { length: 100, time: 6000 }, legs: [{ shape: "???_gayB" }] } });
+    }
+    return original(input, init);
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12);
+  assert.equal(trip.outcome, "feasible");
+  assert.ok(trip.legs.at(-1)!.arrivalSocPercent >= 10 - 1e-9);
+  assert.ok(trip.stops[0]!.departureSocPercent > 10);
+  assert.match(trip.assumptions.join(" "), /selection.*approximat/i);
 });
