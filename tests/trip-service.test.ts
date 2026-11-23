@@ -28,6 +28,10 @@ function configureTrip(t: test.TestContext, failure = false, preceding = 0) {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === config.VALHALLA_URL) {
       const locations = JSON.parse(String(init?.body)).locations;
+      if (locations.length > 2) {
+        assert.ok(locations.every((point: { type: string }) => point.type === "break"));
+        return Response.json({ trip: { legs: locations.slice(1).map((point: { lat: number; lon: number }, i: number) => ({ shape: shapeFor([locations[i], point]), summary: { length: station.latitude ? 100 : 90, time: station.latitude ? 6540 : 5880 } })) } });
+      }
       const direct = locations[0].lon === 0 && locations[1].lon === 2;
       const access = locations[0].lon === 1 && locations[1].lon === 1;
       const miles = direct ? 180 : access ? (station.latitude ? 10 : 0) : station.latitude ? 100 : 90;
@@ -141,7 +145,7 @@ test("charger legs use provider road distances and reject an unreachable stop", 
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid" && init?.body) {
       const locations = JSON.parse(String(init.body)).locations;
-      if (locations[1].lon === 1) return Response.json({ trip: { summary: { length: 150, time: 9000 }, legs: [{ shape: shapeFor(locations) }] } });
+      if (locations.length === 3) return Response.json({ trip: { legs: locations.slice(1).map((point: { lat: number; lon: number }, i: number) => ({ shape: shapeFor([locations[i], point]), summary: { length: i ? 90 : 150, time: 9000 } })) } });
     }
     return original(input, init);
   });
@@ -184,7 +188,7 @@ test("road detours exceeding the limit do not produce a feasible plan", async (t
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid") {
       const locations = JSON.parse(String(init?.body)).locations;
-      if (locations[0].lon === 1 || locations[1].lon === 1) return Response.json({ trip: { summary: { length: 110, time: 6600 }, legs: [{ shape: shapeFor(locations) }] } });
+      if (locations.length === 2 && (locations[0].lon === 1 || locations[1].lon === 1)) return Response.json({ trip: { summary: { length: 110, time: 6600 }, legs: [{ shape: shapeFor(locations) }] } });
     }
     return original(input, init);
   });
@@ -200,7 +204,7 @@ test("recalculates charging when the road leg needs more energy", async (t) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid") {
       const locations = JSON.parse(String(init?.body)).locations;
-      if (locations[0].lon === 1 && locations[1].lon === 2) return Response.json({ trip: { summary: { length: 100, time: 6000 }, legs: [{ shape: shapeFor(locations) }] } });
+      if (locations.length === 3) return Response.json({ trip: { legs: locations.slice(1).map((point: { lat: number; lon: number }, i: number) => ({ shape: shapeFor([locations[i], point]), summary: { length: i ? 100 : 90, time: 6000 } })) } });
     }
     return original(input, init);
   });
@@ -218,7 +222,7 @@ test("a provider route that snaps a charger to a distant road is not feasible", 
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid") {
       const locations = JSON.parse(String(init?.body)).locations;
-      if (locations[0].lon === 0 && locations[1].lon === 1) return Response.json({ trip: { summary: { length: 90, time: 5880 }, legs: [{ shape: "???_gayB" }] } });
+      if (locations.length === 3) { locations[1].lat = 0.01; return Response.json({ trip: { legs: locations.slice(1).map((point: { lat: number; lon: number }, i: number) => ({ shape: shapeFor([locations[i], point]), summary: { length: 90, time: 5880 } })) } }); }
     }
     return original(input, init);
   });
@@ -227,17 +231,18 @@ test("a provider route that snaps a charger to a distant road is not feasible", 
   assert.deepEqual(trip.stops, []);
 });
 
-test("individually nearby but disconnected road legs are not feasible", async (t) => {
+test("even a small gap between road legs is not feasible", async (t) => {
   configureTrip(t);
   const original = globalThis.fetch;
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid") {
       const locations = JSON.parse(String(init?.body)).locations as { lat: number; lon: number }[];
-      if (locations[0]!.lon === 0 && locations[1]!.lon === 1) locations[1]!.lat = 0.0012;
-      else if (locations[0]!.lon === 1 && locations[1]!.lon === 2) locations[0]!.lat = -0.0012;
-      else return original(input, init);
-      return Response.json({ trip: { summary: { length: 90, time: 5880 }, legs: [{ shape: shapeFor(locations) }] } });
+      if (locations.length !== 3) return original(input, init);
+      return Response.json({ trip: { legs: [
+        { shape: shapeFor([locations[0]!, { ...locations[1]!, lat: 0.0005 }]), summary: { length: 90, time: 5880 } },
+        { shape: shapeFor([{ ...locations[1]!, lat: -0.0005 }, locations[2]!]), summary: { length: 90, time: 5880 } },
+      ] } });
     }
     return original(input, init);
   });

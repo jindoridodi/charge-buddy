@@ -73,3 +73,14 @@ export async function roadRoute(origin: Coordinates, destination: Coordinates): 
   if (coordinates.length < 2) throw new Error("ROUTING_INVALID_RESPONSE");
   return { coordinates, miles, minutes: seconds / 60 };
 }
+
+export async function roadRouteVia(points: Coordinates[]): Promise<RoadRoute[]> {
+  const response = await request<unknown>("/route", { locations: points.map(({ lat, lng }) => ({ lat, lon: lng, type: "break" })), costing: "auto", units: "miles" });
+  const parsed = z.object({ trip: z.object({ legs: z.array(z.object({ shape: z.string().min(1), summary: z.object({ length: z.number().finite().nonnegative(), time: z.number().finite().nonnegative() }) })) }) }).safeParse(response);
+  if (!parsed.success || parsed.data.trip.legs.length !== points.length - 1) throw new Error("ROUTING_INVALID_RESPONSE");
+  return parsed.data.trip.legs.map(({ shape, summary }) => {
+    const coordinates = decodePolyline6(shape);
+    if (coordinates.length < 2) throw new Error("ROUTING_INVALID_RESPONSE");
+    return { coordinates, miles: summary.length, minutes: summary.time / 60 };
+  });
+}

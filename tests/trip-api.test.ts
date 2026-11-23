@@ -110,8 +110,8 @@ test("feasible trip response reports battery and timing for each leg", async (t)
   const previous = process.env.VALHALLA_URL;
   process.env.VALHALLA_URL = "https://routing-test.invalid";
   t.after(() => { if (previous == null) delete process.env.VALHALLA_URL; else process.env.VALHALLA_URL = previous; });
-  t.mock.method(globalThis, "fetch", async () => Response.json({ trip: { summary: { length: 10, time: 600 }, legs: [{ shape: "????" }] } }));
-  const response = await POST(new NextRequest("https://app-test.invalid/api/trips", { method: "POST", body: JSON.stringify({ origin: { lat: 37, lng: -122 }, destination: { lat: 38, lng: -122 }, vehicle: { catalogVehicleId: "tesla-model-3-2023-long-range" }, startSocPercent: 80, objective: "fastest" }) }));
+  t.mock.method(globalThis, "fetch", async () => Response.json({ trip: { summary: { length: 10, time: 600 }, legs: [{ shape: "_snxjAvdbggEgppaCgfrb`@" }] } }));
+  const response = await POST(new NextRequest("https://app-test.invalid/api/trips", { method: "POST", body: JSON.stringify({ origin: { lat: 39.7392, lng: -104.9903 }, destination: { lat: 41.8781, lng: -87.6298 }, vehicle: { catalogVehicleId: "tesla-model-3-2023-long-range" }, startSocPercent: 80, objective: "fastest" }) }));
   const trip = await response.json();
   assert.equal(trip.legs.length, 1);
   assert.equal(trip.legs[0].departureSocPercent, 80);
