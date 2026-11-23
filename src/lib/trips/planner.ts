@@ -103,6 +103,8 @@ export function planChargingStops(input: PlanningInput): PlanningResult | null {
           else hasUnknownPrice = true;
           departureKwh = targetKwh;
         }
+        // A visited charger must appear in the returned route.
+        if (current.index > 0 && addedKwh <= 0) continue;
         const arrivalKwh = departureKwh - legKwh;
         const drivingMinutes = legMiles / 55 * 60;
         const nextCost = current.cost == null || hasUnknownPrice ? null : current.cost + addedCost;

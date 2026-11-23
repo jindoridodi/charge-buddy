@@ -10,9 +10,14 @@ function configureTrip(t: test.TestContext, failure = false, preceding = 0) {
   Object.assign(process.env, config);
   t.after(() => { for (const key of Object.keys(config)) { if (previous[key] == null) delete process.env[key]; else process.env[key] = previous[key]; } });
   const station = { id: "needed", name: "Midpoint", latitude: 0, longitude: 1, connector_types: ["NACS"], power_kw: 150, source: "nrel", public_access: true, availability_status: "unknown", source_updated_at: null };
-  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.origin === config.VALHALLA_URL) return Response.json({ trip: { summary: { length: 180, time: 11760 }, legs: [{ shape: "???_gayB" }] } });
+    if (url.origin === config.VALHALLA_URL) {
+      const locations = JSON.parse(String(init?.body)).locations;
+      const direct = locations[0].lon === 0 && locations[1].lon === 2;
+      const miles = direct ? 180 : station.latitude ? 100 : 90;
+      return Response.json({ trip: { summary: { length: miles, time: direct ? 11760 : station.latitude ? 6540 : 5880 }, legs: [{ shape: "???_gayB" }] } });
+    }
     assert.equal(url.origin, config.NEXT_PUBLIC_SUPABASE_URL);
     assert.ok(url.href.length < 4000, "Price lookups must fit ordinary HTTP request limits");
     if (url.pathname.endsWith("corridor_chargers")) {
@@ -64,13 +69,14 @@ test("a compatible corridor charger beyond the first database page remains reach
   assert.equal(trip.stops[0]?.chargerId, "needed");
 });
 
-test("trip totals include the evaluated charging detour", async (t) => {
+test("trip totals include provider road legs through the charging stop", async (t) => {
   const station = configureTrip(t);
   station.latitude = 10 / 69;
   const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 50, 10, "fastest", 12);
   assert.equal(trip.outcome, "feasible");
   assert.equal(trip.distanceMiles, 200);
   assert.equal(trip.driveMinutes, 218);
+  assert.deepEqual(trip.legs.map((leg) => leg.distanceMiles), [100, 100]);
 });
 
 test("a corridor beyond the disclosed scan limit is bounded rather than falsely infeasible", async (t) => {
@@ -111,4 +117,63 @@ test("trip legs retain evaluated battery precision instead of recomputing from r
   const departure = trip.stops[0]!.departureSocPercent;
   assert.ok(Math.abs(departure - Math.round(departure)) > 0.01, "Fixture requires a fractional departure charge");
   assert.equal(trip.legs[1]!.departureSocPercent, departure);
+});
+
+test("charger legs use provider road distances and reject an unreachable stop", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid" && init?.body) {
+      const locations = JSON.parse(String(init.body)).locations;
+      if (locations[1].lon === 1) return Response.json({ trip: { summary: { length: 150, time: 9000 }, legs: [{ shape: "???_gayB" }] } });
+    }
+    return original(input, init);
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12);
+  assert.equal(trip.outcome, "search_bounds_reached");
+  assert.deepEqual(trip.stops, []);
+});
+
+
+test("an inaccessible selected charger does not produce a feasible plan", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid" && JSON.parse(String(init?.body)).locations[1].lon === 1) {
+      return Response.json({ error_code: 442 }, { status: 400 });
+    }
+    return original(input, init);
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12);
+  assert.equal(trip.outcome, "search_bounds_reached");
+  assert.deepEqual(trip.stops, []);
+});
+
+test("a routing service failure on a selected leg remains an error", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid" && JSON.parse(String(init?.body)).locations[1].lon === 1) return new Response(null, { status: 503 });
+    return original(input, init);
+  });
+  await assert.rejects(createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12), /ROUTING_503/);
+});
+
+test("road detours exceeding the limit do not produce a feasible plan", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid") {
+      const locations = JSON.parse(String(init?.body)).locations;
+      if (locations[0].lon === 1 || locations[1].lon === 1) return Response.json({ trip: { summary: { length: 110, time: 6600 }, legs: [{ shape: "???_gayB" }] } });
+    }
+    return original(input, init);
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 50, 10, "fastest", 12);
+  assert.equal(trip.outcome, "search_bounds_reached");
+  assert.deepEqual(trip.stops, []);
 });
