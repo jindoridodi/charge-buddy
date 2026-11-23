@@ -222,8 +222,8 @@ test("changing any planning input invalidates the completed trip", async (t) => 
 test("completed trip labels use the evaluated response objective", async (t) => {
   const page = await tripPage(t, { plan: (route) => route.fulfill({ json: { ...trip, objective: "lowest_cost" } }) });
   await page.getByRole("button", { name: "Plan route", exact: true }).click();
-  await page.getByText("Lowest estimated-cost route", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Fastest feasible estimate", { exact: true }).count(), 0);
+  await page.getByText("Feasible route estimate", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Lowest estimated-cost route", { exact: true }).count(), 0);
 });
 
 test("editing while a trip is pending permits replanning and ignores the older response", async (t) => {

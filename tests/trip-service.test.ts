@@ -4,6 +4,20 @@ import { NextRequest } from "next/server";
 import { createTrip } from "../src/lib/server/trips";
 import { VEHICLE_CATALOG } from "../src/lib/trips/vehicles";
 
+function shapeFor(locations: { lat: number; lon: number }[]) {
+  let lat = 0, lon = 0, shape = "";
+  for (const point of locations) {
+    const nextLat = Math.round(point.lat * 1e6), nextLon = Math.round(point.lon * 1e6);
+    for (let delta of [nextLat - lat, nextLon - lon]) {
+      delta = delta < 0 ? ~(delta << 1) : delta << 1;
+      while (delta >= 32) { shape += String.fromCharCode((32 | (delta & 31)) + 63); delta >>>= 5; }
+      shape += String.fromCharCode(delta + 63);
+    }
+    lat = nextLat; lon = nextLon;
+  }
+  return shape;
+}
+
 function configureTrip(t: test.TestContext, failure = false, preceding = 0) {
   const config = { VALHALLA_URL: "https://routing-test.invalid", NEXT_PUBLIC_SUPABASE_URL: "https://catalog-test.invalid", NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-key" };
   const previous = Object.fromEntries(Object.keys(config).map((key) => [key, process.env[key]]));
@@ -17,7 +31,7 @@ function configureTrip(t: test.TestContext, failure = false, preceding = 0) {
       const direct = locations[0].lon === 0 && locations[1].lon === 2;
       const access = locations[0].lon === 1 && locations[1].lon === 1;
       const miles = direct ? 180 : access ? (station.latitude ? 10 : 0) : station.latitude ? 100 : 90;
-      return Response.json({ trip: { summary: { length: miles, time: direct ? 11760 : station.latitude ? 6540 : 5880 }, legs: [{ shape: "???_gayB" }] } });
+      return Response.json({ trip: { summary: { length: miles, time: direct ? 11760 : station.latitude ? 6540 : 5880 }, legs: [{ shape: shapeFor(locations) }] } });
     }
     assert.equal(url.origin, config.NEXT_PUBLIC_SUPABASE_URL);
     assert.ok(url.href.length < 4000, "Price lookups must fit ordinary HTTP request limits");
@@ -40,9 +54,9 @@ test("no-charge trips remain feasible without a configured catalog for either ob
   delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   t.after(() => { for (const key of keys) { if (previous[key] == null) delete process.env[key]; else process.env[key] = previous[key]; } });
-  const network = t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+  const network = t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     assert.equal(new URL(input instanceof Request ? input.url : String(input)).origin, "https://routing-test.invalid", "No-charge trips must not query the catalog");
-    return Response.json({ trip: { summary: { length: 1, time: 60 }, legs: [{ shape: "????" }] } });
+    return Response.json({ trip: { summary: { length: 1, time: 60 }, legs: [{ shape: shapeFor(JSON.parse(String(init?.body)).locations) }] } });
   });
   for (const objective of ["fastest", "lowest_cost"] as const) {
     const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 37, lng: -122 }, { lat: 37.01, lng: -122 }, VEHICLE_CATALOG[0]!, 80, 10, objective, 12);
@@ -92,9 +106,9 @@ test("successful trip results disclose the bounds actually applied", async (t) =
   const previous = Object.fromEntries(Object.keys(config).map((key) => [key, process.env[key]]));
   Object.assign(process.env, config);
   t.after(() => { for (const key of Object.keys(config)) { if (previous[key] == null) delete process.env[key]; else process.env[key] = previous[key]; } });
-  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.origin === config.VALHALLA_URL) return Response.json({ trip: { summary: { length: 1, time: 60 }, legs: [{ shape: "????" }] } });
+    if (url.origin === config.VALHALLA_URL) return Response.json({ trip: { summary: { length: 1, time: 60 }, legs: [{ shape: shapeFor(JSON.parse(String(init?.body)).locations) }] } });
     assert.equal(url.origin, config.NEXT_PUBLIC_SUPABASE_URL);
     return Response.json([]);
   });
@@ -127,7 +141,7 @@ test("charger legs use provider road distances and reject an unreachable stop", 
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid" && init?.body) {
       const locations = JSON.parse(String(init.body)).locations;
-      if (locations[1].lon === 1) return Response.json({ trip: { summary: { length: 150, time: 9000 }, legs: [{ shape: "???_gayB" }] } });
+      if (locations[1].lon === 1) return Response.json({ trip: { summary: { length: 150, time: 9000 }, legs: [{ shape: shapeFor(locations) }] } });
     }
     return original(input, init);
   });
@@ -170,7 +184,7 @@ test("road detours exceeding the limit do not produce a feasible plan", async (t
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid") {
       const locations = JSON.parse(String(init?.body)).locations;
-      if (locations[0].lon === 1 || locations[1].lon === 1) return Response.json({ trip: { summary: { length: 110, time: 6600 }, legs: [{ shape: "???_gayB" }] } });
+      if (locations[0].lon === 1 || locations[1].lon === 1) return Response.json({ trip: { summary: { length: 110, time: 6600 }, legs: [{ shape: shapeFor(locations) }] } });
     }
     return original(input, init);
   });
@@ -186,7 +200,7 @@ test("recalculates charging when the road leg needs more energy", async (t) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === "https://routing-test.invalid") {
       const locations = JSON.parse(String(init?.body)).locations;
-      if (locations[0].lon === 1 && locations[1].lon === 2) return Response.json({ trip: { summary: { length: 100, time: 6000 }, legs: [{ shape: "???_gayB" }] } });
+      if (locations[0].lon === 1 && locations[1].lon === 2) return Response.json({ trip: { summary: { length: 100, time: 6000 }, legs: [{ shape: shapeFor(locations) }] } });
     }
     return original(input, init);
   });
@@ -195,4 +209,39 @@ test("recalculates charging when the road leg needs more energy", async (t) => {
   assert.ok(trip.legs.at(-1)!.arrivalSocPercent >= 10 - 1e-9);
   assert.ok(trip.stops[0]!.departureSocPercent > 10);
   assert.match(trip.assumptions.join(" "), /selection.*approximat/i);
+});
+
+test("a provider route that snaps a charger to a distant road is not feasible", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid") {
+      const locations = JSON.parse(String(init?.body)).locations;
+      if (locations[0].lon === 0 && locations[1].lon === 1) return Response.json({ trip: { summary: { length: 90, time: 5880 }, legs: [{ shape: "???_gayB" }] } });
+    }
+    return original(input, init);
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12);
+  assert.equal(trip.outcome, "search_bounds_reached");
+  assert.deepEqual(trip.stops, []);
+});
+
+test("individually nearby but disconnected road legs are not feasible", async (t) => {
+  configureTrip(t);
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://routing-test.invalid") {
+      const locations = JSON.parse(String(init?.body)).locations as { lat: number; lon: number }[];
+      if (locations[0]!.lon === 0 && locations[1]!.lon === 1) locations[1]!.lat = 0.0012;
+      else if (locations[0]!.lon === 1 && locations[1]!.lon === 2) locations[0]!.lat = -0.0012;
+      else return original(input, init);
+      return Response.json({ trip: { summary: { length: 90, time: 5880 }, legs: [{ shape: shapeFor(locations) }] } });
+    }
+    return original(input, init);
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 45, 10, "fastest", 12);
+  assert.equal(trip.outcome, "search_bounds_reached");
+  assert.deepEqual(trip.stops, []);
 });

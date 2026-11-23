@@ -4,13 +4,22 @@ import type { CatalogCharger } from "@/lib/catalog/types";
 import { supabaseForRequest } from "@/lib/supabase/server";
 import { chargeMinutes, DEFAULT_BUFFER, isCompatible, planChargingStops, searchBoundsResult, SEARCH_LIMITS, type CorridorCandidate } from "@/lib/trips/planner";
 import type { Coordinates, PlanningCharger, PlanningVehicle, TripObjective } from "@/lib/trips/types";
-import { roadRoute, RoutingLocationError, ROUTING_TIMEOUT_MS } from "./providers/valhalla";
+import { roadRoute, RoutingLocationError, ROUTING_TIMEOUT_MS, type RoadRoute } from "./providers/valhalla";
 import { searchLongCorridor, planLongTrip } from "./long-trip";
 
 const milesPerDegreeLatitude = 69;
 
 function milesPerDegreeLongitude(latitude: number) {
   return milesPerDegreeLatitude * Math.cos(latitude * Math.PI / 180);
+}
+
+// Reject snapping beyond 0.1 mile and discontinuous leg geometry.
+const MAX_ROUTE_GAP_MILES = 0.1;
+function pointDistance(a: Coordinates, b: Coordinates) {
+  return Math.hypot((a.lat - b.lat) * milesPerDegreeLatitude, (a.lng - b.lng) * milesPerDegreeLongitude((a.lat + b.lat) / 2));
+}
+function connects(route: RoadRoute, from: Coordinates, to: Coordinates) {
+  return pointDistance(route.coordinates[0]!, from) <= MAX_ROUTE_GAP_MILES && pointDistance(route.coordinates.at(-1)!, to) <= MAX_ROUTE_GAP_MILES;
 }
 
 function closestRoutePoint(point: Coordinates, route: Coordinates[]) {
@@ -82,11 +91,12 @@ async function corridorCandidates(request: NextRequest, route: Coordinates[], ro
 
 export async function createTrip(request: NextRequest, origin: Coordinates, destination: Coordinates, vehicle: PlanningVehicle, startSocPercent: number, reserveSocPercent: number, objective: TripObjective, maxDetourMiles: number) {
   const road = await roadRoute(origin, destination);
+  const baselineConnected = connects(road, origin, destination);
   const directEnergy = road.miles * vehicle.consumptionWhPerMile / 1000 * 1.12;
   const directPossible = vehicle.usableBatteryKwh * startSocPercent / 100 - directEnergy >= vehicle.usableBatteryKwh * reserveSocPercent / 100;
   const longSearch = !directPossible && (road.miles > 250 || road.coordinates.length > 100);
-  const { candidates, truncated } = directPossible ? { candidates: [], truncated: false } : longSearch ? await searchLongCorridor(request, road.coordinates, road.miles, maxDetourMiles, vehicle) : await corridorCandidates(request, road.coordinates, road.miles, maxDetourMiles, vehicle);
-  let result = directPossible ? { outcome: "feasible" as const, stops: [], totalChargeMinutes: 0, estimatedCost: 0, arrivalSocPercent: (vehicle.usableBatteryKwh * startSocPercent / 100 - directEnergy) / vehicle.usableBatteryKwh * 100, warnings: [] } : longSearch ? planLongTrip({ vehicle, startSocPercent, reserveSocPercent, objective, roadMiles: road.miles, candidates, truncated }) : truncated ? searchBoundsResult() : planChargingStops({ vehicle, startSocPercent, reserveSocPercent, objective, routeMiles: road.miles, candidates });
+  const { candidates, truncated } = !baselineConnected || directPossible ? { candidates: [], truncated: false } : longSearch ? await searchLongCorridor(request, road.coordinates, road.miles, maxDetourMiles, vehicle) : await corridorCandidates(request, road.coordinates, road.miles, maxDetourMiles, vehicle);
+  let result = !baselineConnected ? searchBoundsResult() : directPossible ? { outcome: "feasible" as const, stops: [], totalChargeMinutes: 0, estimatedCost: 0, arrivalSocPercent: (vehicle.usableBatteryKwh * startSocPercent / 100 - directEnergy) / vehicle.usableBatteryKwh * 100, warnings: [] } : longSearch ? planLongTrip({ vehicle, startSocPercent, reserveSocPercent, objective, roadMiles: road.miles, candidates, truncated }) : truncated ? searchBoundsResult() : planChargingStops({ vehicle, startSocPercent, reserveSocPercent, objective, routeMiles: road.miles, candidates });
   // Projected search can discard routes that road routing would make viable.
   if (!result && candidates.length) result = searchBoundsResult();
   const freshness = candidates.map((candidate) => candidate.sourceUpdatedAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
@@ -102,12 +112,14 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
       const points = [origin, ...stops.map((stop) => stop.location), destination];
       try {
         const routes = stops.length ? await Promise.all(points.slice(1).map((point, i) => roadRoute(points[i]!, point))) : [road];
+        if (stops.length && (routes.some((leg, i) => !connects(leg, points[i]!, points[i + 1]!)) || routes.slice(1).some((leg, i) => pointDistance(routes[i]!.coordinates.at(-1)!, leg.coordinates[0]!) > MAX_ROUTE_GAP_MILES))) result = searchBoundsResult();
         // Check road access in both directions to the nearest point on the original corridor.
-        const access = await Promise.all(stops.flatMap((stop) => {
+        const accessPoints = stops.flatMap((stop) => {
           const corridor = closestRoutePoint(stop.location, road.coordinates).location;
-          return [roadRoute(corridor, stop.location), roadRoute(stop.location, corridor)];
-        }));
-        if (access.some((leg) => leg.miles > maxDetourMiles + 1e-9)) result = searchBoundsResult();
+          return [[corridor, stop.location], [stop.location, corridor]] as const;
+        });
+        const access = await Promise.all(accessPoints.map(([from, to]) => roadRoute(from, to)));
+        if (access.some((leg, i) => leg.miles > maxDetourMiles + 1e-9 || !connects(leg, accessPoints[i]![0], accessPoints[i]![1]))) result = searchBoundsResult();
         let energy = vehicle.usableBatteryKwh * startSocPercent / 100;
         let cost: number | null = 0;
         let charging = 0;
@@ -147,5 +159,5 @@ export async function createTrip(request: NextRequest, origin: Coordinates, dest
     }
     if (result.outcome !== "feasible") legs = [];
   }
-  return { legs, outcome: result?.outcome ?? "no_feasible_plan", objective, route, distanceMiles: Math.round(distanceMiles * 10) / 10, driveMinutes: Math.round(driveMinutes), chargeMinutes: result?.totalChargeMinutes, estimatedCost: result?.estimatedCost == null ? result?.estimatedCost : Math.round(result.estimatedCost * 100) / 100, stops: result?.stops ?? [], warnings: result ? [...result.warnings, "Charging availability, prices, weather, traffic, and elevation are not live inputs.", "Candidate selection uses corridor estimates; verify station access before departure."] : ["No feasible plan was found within the selected detour limit."], assumptions: [longSearch ? "Long routes search at intervals of about 35 miles, with at most 100 chargers per area and 120 areas." : `At most ${SEARCH_LIMITS.maxScannedCandidates} corridor records and ${SEARCH_LIMITS.maxCandidates} compatible candidates are evaluated; search is limited to ${SEARCH_LIMITS.maxTransitions} transitions and ${SEARCH_LIMITS.maxQueuedStates} queued states.`, "Energy estimates use a curated vehicle baseline plus a 12% planning buffer.", "Costs cover known electricity purchased during this trip, excluding starting charge.", "Selected legs use road routing. Each stop is checked for road access in both directions to its nearest point on the original corridor, within the detour limit. Selection uses approximate corridor estimates, so the chosen plan may not be fastest or cheapest after road routing. At most 20 charging stops are validated.", "A charging stop includes the vehicle-specific connection overhead.", "Only public NREL stations with compatible connectors are evaluated.", longSearch ? "Long-route search favors the furthest reachable charger that can still reach the destination; it charges to 100% at each stop." : `Search evaluates at most ${SEARCH_LIMITS.maxIterations} states; additional departure charge levels use ${SEARCH_LIMITS.energyStepPercent}% increments.`, `Maximum corridor detour: ${maxDetourMiles} miles. Routing requests time out after ${ROUTING_TIMEOUT_MS / 1000} seconds.`], dataFreshness: freshness };
+  return { legs, outcome: result?.outcome ?? "no_feasible_plan", objective, route, distanceMiles: Math.round(distanceMiles * 10) / 10, driveMinutes: Math.round(driveMinutes), chargeMinutes: result?.totalChargeMinutes, estimatedCost: result?.estimatedCost == null ? result?.estimatedCost : Math.round(result.estimatedCost * 100) / 100, stops: result?.stops ?? [], warnings: result ? [...result.warnings, "Charging availability, prices, weather, traffic, and elevation are not live inputs.", "Candidate selection uses corridor estimates; verify station access before departure."] : ["No feasible plan was found within the selected detour limit."], assumptions: [longSearch ? "Long routes search at intervals of about 35 miles, with at most 100 chargers per area and 120 areas." : `At most ${SEARCH_LIMITS.maxScannedCandidates} corridor records and ${SEARCH_LIMITS.maxCandidates} compatible candidates are evaluated; search is limited to ${SEARCH_LIMITS.maxTransitions} transitions and ${SEARCH_LIMITS.maxQueuedStates} queued states.`, "Energy estimates use a curated vehicle baseline plus a 12% planning buffer.", "Costs cover known electricity purchased during this trip, excluding starting charge.", "Selected legs use road routing. Each stop is checked for road access in both directions to its nearest point on the original corridor, within the detour limit. Selection uses approximate corridor estimates, so the chosen plan may not be fastest or cheapest after road routing. Road geometry must connect within 0.1 mile of each requested point and adjoining leg. At most 20 charging stops are validated.", "A charging stop includes the vehicle-specific connection overhead.", "Only public NREL stations with compatible connectors are evaluated.", longSearch ? "Long-route search favors the furthest reachable charger that can still reach the destination; it charges to 100% at each stop." : `Search evaluates at most ${SEARCH_LIMITS.maxIterations} states; additional departure charge levels use ${SEARCH_LIMITS.energyStepPercent}% increments.`, `Maximum corridor detour: ${maxDetourMiles} miles. Routing requests time out after ${ROUTING_TIMEOUT_MS / 1000} seconds.`], dataFreshness: freshness };
 }
