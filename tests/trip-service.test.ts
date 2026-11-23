@@ -250,3 +250,20 @@ test("even a small gap between road legs is not feasible", async (t) => {
   assert.equal(trip.outcome, "search_bounds_reached");
   assert.deepEqual(trip.stops, []);
 });
+
+test("a long trip retries another charger when the first choice exceeds the road detour limit", async (t) => {
+  configureTrip(t);
+  const stations = [1, 0.9].map((longitude) => ({ id: String(longitude), name: String(longitude), latitude: 0.01, longitude, connector_types: ["NACS"], power_kw: 150, source: "nrel", public_access: true, availability_status: "unknown", source_updated_at: null, community_price_per_kwh: null }));
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === "https://catalog-test.invalid") return Response.json(stations);
+    const locations = JSON.parse(String(init?.body)).locations;
+    if (locations.length === 3) return Response.json({ trip: { legs: locations.slice(1).map((point: { lat: number; lon: number }, i: number) => ({ shape: shapeFor([locations[i], point]), summary: { length: i ? 160 : 140, time: 6000 } })) } });
+    const baseline = locations[0].lon === 0 && locations[1].lon === 2;
+    const badAccess = locations[0].lon === 1 && locations[1].lon === 1;
+    return Response.json({ trip: { summary: { length: baseline ? 300 : badAccess ? 20 : 1, time: 6000 }, legs: [{ shape: shapeFor(locations) }] } });
+  });
+  const trip = await createTrip(new NextRequest("https://app-test.invalid/api/trips"), { lat: 0, lng: 0 }, { lat: 0, lng: 2 }, VEHICLE_CATALOG[0]!, 70, 10, "fastest", 12);
+  assert.equal(trip.outcome, "feasible");
+  assert.equal(trip.stops[0]?.chargerId, "0.9");
+});
