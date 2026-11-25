@@ -57,8 +57,8 @@ for (let offset = 0; ; ) {
   staleIds.push(...rows.filter((row) => !row.source_external_id || !importedSourceIds.has(row.source_external_id)).map((row) => row.id));
   offset += rows.length;
 }
-for (let start = 0; start < staleIds.length; start += 1000) {
-  const { error } = await supabase.from("chargers").update({ public_access: false, availability_status: "unavailable", imported_at: new Date().toISOString() }).in("id", staleIds.slice(start, start + 1000));
+for (let start = 0; start < staleIds.length; start += 100) {
+  const { error } = await supabase.from("chargers").update({ public_access: false, availability_status: "unavailable", imported_at: new Date().toISOString() }).in("id", staleIds.slice(start, start + 100));
   if (error) throw error;
 }
 

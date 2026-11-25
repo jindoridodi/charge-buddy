@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 let imported = false;
 const scenario = process.env.IMPORT_SCENARIO ?? "single";
 const complete = ["single", "complete"].includes(scenario);
-const staleRows = Array.from({ length: 1001 }, (_, id) => ({ id: `stale-${String(id).padStart(4, "0")}`, source_external_id: String(id + 10000) }));
+const staleRows = Array.from({ length: 1001 }, (_, id) => ({ id: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`, source_external_id: String(id + 10000) }));
 const deactivated = new Set();
 process.on("exit", () => assert.equal(deactivated.size, complete ? 1001 : 0, "Only complete imports may deactivate missing stations, including later pages"));
 globalThis.fetch = async (input, options) => {
@@ -35,6 +35,7 @@ globalThis.fetch = async (input, options) => {
   }
   assert.ok(imported, "Catalog reconciliation must follow a successful import");
   if (options?.method === "PATCH") {
+    assert.ok(url.href.length < 8000, "Reconciliation requests must fit ordinary URL size limits");
     for (const id of url.searchParams.get("id").slice(4, -1).split(",")) deactivated.add(id.replaceAll('"', ''));
     return Response.json([]);
   }
