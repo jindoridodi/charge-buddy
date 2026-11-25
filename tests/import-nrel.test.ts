@@ -26,21 +26,21 @@ test("the real importer loads .env.local and normalizes imported records without
   assert.match(result.stdout, /Imported or updated 1 chargers/);
 });
 
-test("a malformed later import page aborts without deactivating existing chargers", () => {
+test("a malformed snapshot aborts without deactivating existing chargers", () => {
   const result = runImporter("missing-array");
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /NREL import incomplete/);
   assert.doesNotMatch(result.stderr, /AssertionError/);
 });
 
-test("complete multi-page imports reconcile missing records only after the last station", () => {
+test("complete snapshots reconcile missing records only after all stations are imported", () => {
   const result = runImporter("complete");
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Imported or updated 201 chargers; marked 1001 missing/);
 });
 
-test("inconsistent pagination and invalid or duplicate stations prevent deactivation", () => {
-  for (const scenario of ["missing-total", "wrong-offset", "changed-total", "short-page", "duplicate", "invalid-row"]) {
+test("incomplete snapshots and invalid or duplicate stations prevent catalog writes", () => {
+  for (const scenario of ["missing-total", "wrong-total", "short-page", "duplicate", "invalid-row"]) {
     const result = runImporter(scenario);
     assert.notEqual(result.status, 0, scenario);
     assert.match(result.stderr, /NREL import incomplete/, scenario);

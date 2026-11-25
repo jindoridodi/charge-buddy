@@ -13,11 +13,11 @@ For database-backed Peer listing publication and reservation setup/current verif
    npm run import:nrel
    ```
 
-The importer requests active (`status=E`) public US electric stations in pages, upserts on `nrel_station_id`, and keeps NREL `ev_pricing` as raw operator text. It does not parse that text or use it in rankings.
+The importer requests one full response of active (`status=E`) public US electric stations, upserts in batches on `nrel_station_id`, and keeps NREL `ev_pricing` as raw operator text. It does not parse that text or use it in rankings. The response is large and requires sufficient memory on the importer host.
 
 The command loads `.env.local` using Next.js environment loading and the same normalizer exercised by catalog tests. An operational station has **unknown live availability**; operational status does not establish occupancy or access at departure time.
 
-Before deactivating missing records, the importer requires complete page arrays, a consistent `total_results`, expected page lengths, matching offsets when returned, valid normalized station identities, and exactly the reported number of unique IDs. This uses the provider's documented [station count and pagination contract](https://developer.nlr.gov/docs/transportation/alt-fuel-stations-v1/all/#response-fields). Failed runs may have upserted earlier valid pages but do not reconcile missing records; resolve the failure and rerun. These guards do not provide a transactional provider snapshot.
+Before writing records, the importer requires a nonempty response whose array length matches `total_results`, valid normalized station identities, and exactly the reported number of unique IDs. This uses the provider's documented [all-stations contract](https://developer.nlr.gov/docs/transportation/alt-fuel-stations-v1/all/). A failure during upserts may leave earlier batches updated, but missing records are not reconciled until all upserts succeed; resolve the failure and rerun. Database writes are not transactional.
 
 Use the **Refresh NREL catalog** workflow's manual dispatch for shared databases; scheduled and manually dispatched workflow runs share a concurrency group. GitHub may replace an existing pending run when another run is queued. The CLI does not participate in that group: before running it against a shared database, disable the workflow, wait for all running imports to finish, and coordinate with other operators so no other CLI import starts. Re-enable the workflow after the CLI import finishes. Use a separate database for local testing.
 
