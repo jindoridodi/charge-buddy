@@ -13,42 +13,29 @@ if (!nrelKey || !url || !serviceKey) throw new Error("NREL_API_KEY, NEXT_PUBLIC_
 const supabase = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 const endpoint = "https://developer.nlr.gov/api/alt-fuel-stations/v1.json";
 const limit = 200;
-let offset = 0;
 let imported = 0;
-let expectedTotal = null;
-const importedSourceIds = new Set();
-
-while (true) {
-  const params = new URLSearchParams({ api_key: nrelKey, fuel_type: "ELEC", access: "public", status: "E", country: "US", limit: String(limit), offset: String(offset), _cb: randomUUID() });
-  const response = await fetch(`${endpoint}?${params}`);
-  if (!response.ok) throw new Error(`NREL request failed: ${response.status} ${await response.text()}`);
-  const payload = await response.json();
-  const stations = payload?.fuel_stations;
-  const total = payload?.total_results;
-  if (!Array.isArray(stations) || !Number.isSafeInteger(total) || total < 0
-    || (payload.offset !== undefined && payload.offset !== offset)
-    || (expectedTotal !== null && total !== expectedTotal)
-    || stations.length !== Math.min(limit, total - offset)) {
-    throw new Error("NREL import incomplete: invalid page or inconsistent pagination; refusing catalog deactivation.");
-  }
-  expectedTotal = total;
-  const rows = stations.map(normalizeNrelStation);
-  if (rows.some((row) => !row || !Number.isSafeInteger(row.nrel_station_id) || row.nrel_station_id <= 0)) {
-    throw new Error("NREL import incomplete: invalid station; refusing catalog deactivation.");
-  }
-  if (rows.length) {
-    const { error } = await supabase.from("chargers").upsert(rows, { onConflict: "nrel_station_id" });
-    if (error) throw error;
-    imported += rows.length;
-    for (const row of rows) importedSourceIds.add(row.source_external_id);
-  }
-  offset += stations.length;
-  process.stdout.write(`Imported ${imported} active public US stations\n`);
-  if (offset === expectedTotal) break;
+const params = new URLSearchParams({ api_key: nrelKey, fuel_type: "ELEC", access: "public", status: "E", country: "US", limit: "all", _cb: randomUUID() });
+const response = await fetch(`${endpoint}?${params}`);
+if (!response.ok) throw new Error(`NREL request failed: ${response.status} ${await response.text()}`);
+const payload = await response.json();
+const stations = payload?.fuel_stations;
+const total = payload?.total_results;
+if (!Array.isArray(stations) || !Number.isSafeInteger(total) || total <= 0 || stations.length !== total) {
+  throw new Error("NREL import incomplete: invalid snapshot; refusing catalog deactivation.");
 }
-
-if (!importedSourceIds.size) throw new Error("NREL returned no valid stations; refusing to mark existing catalog entries unavailable.");
-if (importedSourceIds.size !== expectedTotal) throw new Error("NREL import incomplete: duplicate or missing station IDs; refusing catalog deactivation.");
+const rows = stations.map(normalizeNrelStation);
+if (rows.some((row) => !row || !Number.isSafeInteger(row.nrel_station_id) || row.nrel_station_id <= 0)) {
+  throw new Error("NREL import incomplete: invalid station; refusing catalog deactivation.");
+}
+const importedSourceIds = new Set(rows.map((row) => row.source_external_id));
+if (importedSourceIds.size !== total) throw new Error("NREL import incomplete: duplicate or missing station IDs; refusing catalog deactivation.");
+for (let offset = 0; offset < rows.length; offset += limit) {
+  const batch = rows.slice(offset, offset + limit);
+  const { error } = await supabase.from("chargers").upsert(batch, { onConflict: "nrel_station_id" });
+  if (error) throw error;
+  imported += batch.length;
+  process.stdout.write(`Imported ${imported} active public US stations\n`);
+}
 
 const staleIds = [];
 for (let offset = 0; ; ) {
