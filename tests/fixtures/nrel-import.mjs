@@ -5,11 +5,15 @@ const scenario = process.env.IMPORT_SCENARIO ?? "single";
 const complete = ["single", "complete"].includes(scenario);
 const staleRows = Array.from({ length: 1001 }, (_, id) => ({ id: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`, source_external_id: String(id + 10000) }));
 const deactivated = new Set();
+const cacheKeys = new Set();
 process.on("exit", () => assert.equal(deactivated.size, complete ? 1001 : 0, "Only complete imports may deactivate missing stations, including later pages"));
 globalThis.fetch = async (input, options) => {
   const url = new URL(input instanceof Request ? input.url : String(input));
   if (url.hostname === "developer.nlr.gov") {
     assert.equal(url.searchParams.get("api_key"), "test-nrel-key");
+    const cacheKey = url.searchParams.get("_cb");
+    assert.ok(cacheKey && !cacheKeys.has(cacheKey), "Every NREL page must bypass stale cached responses");
+    cacheKeys.add(cacheKey);
     const station = (id) => ({ id, station_name: " Test station ", latitude: 42, longitude: -71, status_code: "E", ev_dc_fast_num: 1 });
     const offset = Number(url.searchParams.get("offset"));
     if (scenario === "single") return Response.json({ total_results: 1, fuel_stations: [station(1)] });
