@@ -14,8 +14,9 @@ import { toast } from "sonner";
 
 export default function Index() {
   const [q, setQ] = useState("");
+  const [locating, setLocating] = useState(false);
   const navigate = useRouter();
-  const { allChargers } = useApp();
+  const { allChargers, set } = useApp();
   const featured = [...allChargers].sort((a, b) => b.rating - a.rating).slice(0, 4);
 
   const go = (query: string) => navigate.push(`/chargers?q=${encodeURIComponent(query)}`);
@@ -48,9 +49,19 @@ export default function Index() {
                 variant="ghost"
                 size="icon"
                 aria-label="Use current location"
+                aria-busy={locating}
+                disabled={locating}
                 onClick={() => {
-                  toast.success("Using your location: Downtown San Jose (simulated)");
-                  go("Downtown San Jose");
+                  if (!navigator.geolocation) { toast.error("Location is unavailable. Enter a city, ZIP code or address."); return; }
+                  setLocating(true);
+                  navigator.geolocation.getCurrentPosition(({ coords }) => {
+                    set({ quoteOrigin: { lat: coords.latitude, lng: coords.longitude } });
+                    setLocating(false);
+                    go("");
+                  }, () => {
+                    setLocating(false);
+                    toast.error("Could not access your location. Enter a city, ZIP code or address.");
+                  }, { timeout: 10_000, maximumAge: 60_000 });
                 }}
               >
                 <LocateFixed className="h-4 w-4" />
@@ -71,8 +82,8 @@ export default function Index() {
           <div className="relative">
             <img src={hero.src} alt="Electric car charging at a home wall charger" width={1536} height={1024} className="aspect-[4/3] w-full rounded-3xl object-cover shadow-card" />
             <div className="absolute -bottom-5 left-5 rounded-2xl border bg-card p-4 shadow-card">
-              <p className="text-xs text-muted-foreground">Avg. savings vs public fast charging</p>
-              <p className="font-display text-2xl font-bold text-primary">42%</p>
+              <p className="text-xs text-muted-foreground">Compare charging estimates</p>
+              <p className="font-display text-2xl font-bold text-primary">Price + travel</p>
             </div>
           </div>
         </div>
@@ -82,8 +93,8 @@ export default function Index() {
         <h2 className="text-center text-3xl font-bold">How it works</h2>
         <div className="mt-10 grid gap-6 md:grid-cols-2">
           {[
-            { icon: Car, title: "For Drivers", steps: ["Search for available chargers.", "Compare prices and distances.", "Reserve a charger.", "Navigate to the location and charge."] },
-            { icon: Home, title: "For Hosts", steps: ["Create an account.", "List your home EV charger.", "Set your pricing and availability.", "Earn money when drivers use your charger."] },
+            { icon: Car, title: "For Drivers", steps: ["Search for available chargers.", "Compare prices and distances.", "Inspect the reported charging data.", "Evaluate a route with charging stops."] },
+            { icon: Home, title: "For Hosts", steps: ["Create an account.", "List your home EV charger.", "Set your price and publish your listing.", "Pause or edit your own listing."] },
           ].map((b) => (
             <div key={b.title} className="rounded-3xl border bg-card p-8 shadow-card">
               <div className="mb-6 flex items-center gap-3">
@@ -110,7 +121,7 @@ export default function Index() {
             {[
               { icon: BadgeDollarSign, t: "Lower charging costs", d: "Home rates beat most public networks." },
               { icon: MapPin, t: "Convenient locations", d: "Chargers in the neighborhoods you already visit." },
-              { icon: Home, t: "Extra income", d: "Hosts earn from a charger that sits idle." },
+              { icon: Home, t: "Share your charger", d: "Publish a listing for nearby drivers to discover." },
               { icon: Leaf, t: "Better infrastructure", d: "More access without new construction." },
             ].map((f) => (
               <div key={f.t} className="rounded-2xl border p-6 transition-shadow hover:shadow-card">
@@ -136,8 +147,8 @@ export default function Index() {
       <section className="mx-auto max-w-7xl px-4">
         <div className="grid gap-6 rounded-3xl bg-gradient-primary p-10 text-primary-foreground md:grid-cols-3">
           {[
-            { icon: Shield, t: "Verified hosts", d: "Every listing is reviewed by the community." },
-            { icon: Clock, t: "Book in seconds", d: "Reserve a time slot and skip the queue." },
+            { icon: Shield, t: "Approximate locations", d: "Peer listings keep street addresses private." },
+            { icon: Clock, t: "Evaluate a trip", d: "Inspect charging stops and planning assumptions." },
             { icon: Zap, t: "Smart cost estimates", d: "Includes fees and travel, not just $/kWh." },
           ].map((f) => (
             <div key={f.t}>

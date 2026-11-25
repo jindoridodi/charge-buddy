@@ -4,13 +4,17 @@ Use this directory selectively. Source files, `package.json`, migrations, and te
 
 | Task | Read |
 | --- | --- |
+| Set up or verify shared Peer listings and persistent reservations | [Shared listings and reservations](SHARED_LISTINGS_RESERVATIONS.md). |
+| Inspect locally fetched GitHub branches and PR versions | [Local GitHub integration](LOCAL_GITHUB_INTEGRATION.md). |
+| Review current GitHub issue progress and integration evidence | [Issue audit](ISSUE_AUDIT.md). |
 | Confirm current behavior or a file location | Source, `package.json`, migrations, and tests; use [Current state](CURRENT_STATE.md) only for its dated baseline. |
 | Change product scope or prove acceptance | [Requirements](REQUIREMENTS.md) and [Testing](TESTING.md). |
 | Change data boundaries, cost rules, or trip planning | [Architecture](ARCHITECTURE.md). |
 | Plan unfinished work or coordinate two developers | [Implementation steps](IMPLEMENTATION_STEPS.md) and [Team plan](TEAM_PLAN.md). |
 | Set up Supabase, import NREL data, or administer price reports | [Supabase and NREL setup](SUPABASE_SETUP.md). |
 | Run self-hosted routing/geocoding | [Infrastructure guide](../infra/README.md). |
-| Prepare a release or recovery workflow | [SDLC](SDLC.md) and [Testing](TESTING.md). |
+| Prepare a release or recovery workflow | [SDLC](SDLC.md), [Testing](TESTING.md), and [local acceptance and recovery](LOCAL_ACCEPTANCE.md). |
+| Continue the nationwide core release integration | [Spec #2 handoff](HANDOFF_SPEC_2.md). |
 | Check the bounded PR stabilization findings and merge assessment | [Stabilization ledger](STABILIZATION.md). |
 
 ## Status conventions

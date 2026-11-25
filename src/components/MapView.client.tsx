@@ -17,22 +17,30 @@ export interface MapViewProps {
   center?: [number, number] | undefined;
   zoom?: number;
   className?: string;
+  onError?: (() => void) | undefined;
 }
 
-export default function MapViewClient({ markers, activeId, onSelect, route, center = [37.32, -121.89], zoom = 11, className }: MapViewProps) {
+export default function MapViewClient({ markers, activeId, onSelect, route, center = [37.32, -121.89], zoom = 11, className, onError }: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
+  const errorRef = useRef(onError);
+  errorRef.current = onError;
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
 
   useEffect(() => {
     if (!el.current || map.current) return;
     map.current = L.map(el.current, { zoomControl: true, scrollWheelZoom: true }).setView(center, zoom);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    let tileLoaded = false;
+    const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap contributors",
       maxZoom: 19,
-    }).addTo(map.current);
+    });
+    tiles.on("loading", () => { tileLoaded = false; });
+    tiles.on("tileload", () => { tileLoaded = true; });
+    tiles.on("load", () => { if (!tileLoaded) errorRef.current?.(); });
+    tiles.addTo(map.current);
     layer.current = L.layerGroup().addTo(map.current);
     return () => {
       map.current?.remove();
@@ -61,7 +69,7 @@ export default function MapViewClient({ markers, activeId, onSelect, route, cent
 
   useEffect(() => {
     if (!map.current) return;
-    if (route && route.length > 1) map.current.fitBounds(L.latLngBounds(route), { padding: [40, 40] });
+    if (route && route.length > 1) map.current.fitBounds(L.latLngBounds([...route, ...markers.map((marker): [number, number] => [marker.lat, marker.lng])]), { padding: [40, 40] });
     else if (markers.length) map.current.fitBounds(L.latLngBounds(markers.map((marker) => [marker.lat, marker.lng])), { padding: [30, 30], maxZoom: 13 });
   }, [markers, route]);
 

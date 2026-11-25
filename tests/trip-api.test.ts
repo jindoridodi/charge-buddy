@@ -81,3 +81,40 @@ test("invalid routing measurements and shapes return 503 before catalog access",
     assert.equal(calls, index + 1);
   }
 });
+
+test("national connected routes preserve provider geometry and disconnected regions return no route", async (t) => {
+  const previous = process.env.VALHALLA_URL;
+  process.env.VALHALLA_URL = "https://routing-test.invalid";
+  t.after(() => { if (previous == null) delete process.env.VALHALLA_URL; else process.env.VALHALLA_URL = previous; });
+  const routes = [
+    { origin: { lat: 61.2181, lng: -149.9003 }, destination: { lat: 64.8378, lng: -147.7164 }, shape: "grmwsBv_e||Ggv|{EwlhdC" },
+    { origin: { lat: 21.3069, lng: -157.8583 }, destination: { lat: 21.4022, lng: -157.7394 }, shape: "g`nsg@v~{alHgcyDgfgF" },
+    { origin: { lat: 39.7392, lng: -104.9903 }, destination: { lat: 41.8781, lng: -87.6298 }, shape: "_snxjAvdbggEgppaCgfrb`@" },
+  ];
+  let shape = "";
+  t.mock.method(globalThis, "fetch", async () => shape ? Response.json({ trip: { summary: { length: 1, time: 60 }, legs: [{ shape }] } }) : Response.json({ error_code: 442, error: "No route found" }, { status: 400 }));
+  for (const [index, route] of routes.entries()) {
+    shape = route.shape;
+    const response = await POST(new NextRequest("https://app-test.invalid/api/trips", { method: "POST", headers: { "x-forwarded-for": `203.0.113.${index + 1}` }, body: JSON.stringify({ origin: route.origin, destination: route.destination, vehicle: { catalogVehicleId: "tesla-model-3-2023-long-range" }, startSocPercent: 80, objective: "fastest" }) }));
+    const trip = await response.json();
+    assert.equal(trip.outcome, "feasible");
+    assert.deepEqual(trip.route, [route.origin, route.destination]);
+  }
+  shape = "";
+  const response = await POST(new NextRequest("https://app-test.invalid/api/trips", { method: "POST", headers: { "x-forwarded-for": "203.0.113.4" }, body: JSON.stringify({ origin: routes[0]!.origin, destination: routes[1]!.destination, vehicle: { catalogVehicleId: "tesla-model-3-2023-long-range" }, startSocPercent: 80, objective: "fastest" }) }));
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).outcome, "invalid_location");
+});
+
+test("feasible trip response reports battery and timing for each leg", async (t) => {
+  const previous = process.env.VALHALLA_URL;
+  process.env.VALHALLA_URL = "https://routing-test.invalid";
+  t.after(() => { if (previous == null) delete process.env.VALHALLA_URL; else process.env.VALHALLA_URL = previous; });
+  t.mock.method(globalThis, "fetch", async () => Response.json({ trip: { summary: { length: 10, time: 600 }, legs: [{ shape: "_snxjAvdbggEgppaCgfrb`@" }] } }));
+  const response = await POST(new NextRequest("https://app-test.invalid/api/trips", { method: "POST", body: JSON.stringify({ origin: { lat: 39.7392, lng: -104.9903 }, destination: { lat: 41.8781, lng: -87.6298 }, vehicle: { catalogVehicleId: "tesla-model-3-2023-long-range" }, startSocPercent: 80, objective: "fastest" }) }));
+  const trip = await response.json();
+  assert.equal(trip.legs.length, 1);
+  assert.equal(trip.legs[0].departureSocPercent, 80);
+  assert.ok(trip.legs[0].arrivalSocPercent < 80);
+  assert.equal(trip.legs[0].driveMinutes, 10);
+});

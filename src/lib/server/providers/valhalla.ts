@@ -18,7 +18,11 @@ async function request<T>(path: string, body: object): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ROUTING_TIMEOUT_MS);
   try {
-    const response = await fetch(`${baseUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal, cache: "no-store" });
+    const key = process.env["STADIA_MAPS_API_KEY"]?.trim();
+    const url = key ? "https://api.stadiamaps.com/route/v1" : `${baseUrl()}${path}`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (key) headers["authorization"] = `Stadia-Auth ${key}`;
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal, cache: "no-store" });
     if (!response.ok) {
       if (response.status === 400) {
         const error = await response.json().catch(() => null) as { error_code?: number } | null;
@@ -68,4 +72,15 @@ export async function roadRoute(origin: Coordinates, destination: Coordinates): 
   const coordinates = decodePolyline6(shape);
   if (coordinates.length < 2) throw new Error("ROUTING_INVALID_RESPONSE");
   return { coordinates, miles, minutes: seconds / 60 };
+}
+
+export async function roadRouteVia(points: Coordinates[]): Promise<RoadRoute[]> {
+  const response = await request<unknown>("/route", { locations: points.map(({ lat, lng }) => ({ lat, lon: lng, type: "break" })), costing: "auto", units: "miles" });
+  const parsed = z.object({ trip: z.object({ legs: z.array(z.object({ shape: z.string().min(1), summary: z.object({ length: z.number().finite().nonnegative(), time: z.number().finite().nonnegative() }) })) }) }).safeParse(response);
+  if (!parsed.success || parsed.data.trip.legs.length !== points.length - 1) throw new Error("ROUTING_INVALID_RESPONSE");
+  return parsed.data.trip.legs.map(({ shape, summary }) => {
+    const coordinates = decodePolyline6(shape);
+    if (coordinates.length < 2) throw new Error("ROUTING_INVALID_RESPONSE");
+    return { coordinates, miles: summary.length, minutes: summary.time / 60 };
+  });
 }

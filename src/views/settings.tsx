@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { PageHeader, Section, Field, NativeSelect } from "@/components/PageHeader";
 import { CONNECTORS, type Connector, type Vehicle } from "@/lib/data";
 import { useApp, type Settings } from "@/lib/store";
+import { vehicleSchema } from "@/lib/vehicle-schema";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="space-y-4 rounded-2xl border bg-card p-5"><h2 className="text-lg font-semibold">{title}</h2>{children}</div>;
@@ -20,13 +21,14 @@ export default function Page() {
   const app = useApp();
   const s = app.settings;
   const setS = (p: Partial<Settings>) => app.set((st) => ({ settings: { ...st.settings, ...p } }));
-  const [profile, setProfile] = useState({ name: app.user?.name ?? "", email: app.user?.email ?? "", phone: app.user?.phone ?? "" });
   const [nv, setNv] = useState({ nickname: "", make: "", model: "", year: 2024, batteryKwh: 60, efficiency: 3.5, connector: "CCS" as Connector });
 
   const addVehicle = () => {
-    if (!nv.make || !nv.model) { toast.error("Enter make and model"); return; }
-    const v: Vehicle = { ...nv, id: `v${Date.now()}`, nickname: nv.nickname || `${nv.make} ${nv.model}` };
-    app.set((st) => ({ vehicles: [...st.vehicles, v] }));
+    if (app.vehicles.length >= 20) { toast.error("You can add up to 20 vehicles"); return; }
+    const result = vehicleSchema.safeParse({ ...nv, id: crypto.randomUUID(), nickname: nv.nickname.trim() || `${nv.make.trim()} ${nv.model.trim()}` });
+    if (!result.success) { toast.error("Enter a make and model (up to 100 characters), a year from 1886 to 2100, and positive battery and efficiency values. Nicknames must be at most 100 characters."); return; }
+    const v: Vehicle = result.data;
+    app.set((st) => ({ vehicles: [...st.vehicles, v], defaultVehicleId: st.defaultVehicleId || v.id }));
     setNv({ ...nv, nickname: "", make: "", model: "" });
     toast.success("Vehicle added");
   };
@@ -36,12 +38,8 @@ export default function Page() {
       <PageHeader title="Settings" subtitle="Your profile, vehicles and preferences." />
       <Section className="grid max-w-4xl gap-6">
         <Card title="Profile">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Name"><Input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} /></Field>
-            <Field label="Email"><Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} /></Field>
-            <Field label="Phone"><Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></Field>
-          </div>
-          <Button onClick={() => { app.set({ user: { id: app.user?.id ?? "demo", ...profile, purpose: app.user?.purpose ?? "both" } }); toast.success("Profile saved"); }}>Save profile</Button>
+          <p className="text-sm">{app.user ? `${app.user.name} · ${app.user.email}` : "Sign in to save your vehicles, favorites and preferences across browsers."}</p>
+          <p className="text-sm text-muted-foreground">Profile editing is unavailable. Account identity comes from your verified sign-in.</p>
         </Card>
 
         <Card title="My vehicles">
@@ -51,7 +49,7 @@ export default function Page() {
                 <p className="text-sm text-muted-foreground">{v.year} {v.make} {v.model} · {v.batteryKwh} kWh · {v.efficiency} mi/kWh · {v.connector}</p></div>
               <div className="flex gap-2">
                 {v.id !== app.defaultVehicleId && <Button size="sm" variant="outline" onClick={() => app.set({ defaultVehicleId: v.id })}>Make default</Button>}
-                <Button size="icon" variant="ghost" aria-label="Remove" disabled={app.vehicles.length <= 1} onClick={() => app.set((st) => ({ vehicles: st.vehicles.filter((x) => x.id !== v.id), defaultVehicleId: st.defaultVehicleId === v.id ? st.vehicles.find((x) => x.id !== v.id)!.id : st.defaultVehicleId }))}><Trash2 className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => app.set((st) => ({ vehicles: st.vehicles.filter((x) => x.id !== v.id), defaultVehicleId: st.defaultVehicleId === v.id ? st.vehicles.find((x) => x.id !== v.id)?.id ?? "" : st.defaultVehicleId }))}><Trash2 className="h-4 w-4" /></Button>
               </div>
             </div>
           ))}
@@ -77,21 +75,18 @@ export default function Page() {
           <Field label={`Default search radius: ${s.maxDistance} mi`}><Slider min={1} max={30} value={[s.maxDistance]} onValueChange={([v]) => setS({ maxDistance: v ?? 15 })} /></Field>
           <Field label={`Default host margin: ${s.defaultMargin}%`}><Slider min={0} max={100} step={5} value={[s.defaultMargin]} onValueChange={([v]) => setS({ defaultMargin: v ?? 40 })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Units"><NativeSelect value={s.units} onChange={(e) => setS({ units: e.target.value as "mi" | "km" })}><option value="mi">Miles</option><option value="km">Kilometers</option></NativeSelect></Field>
+            <Field label="Units" hint="Distance conversion is unavailable; estimates use miles."><NativeSelect value="mi" disabled><option value="mi">Miles</option></NativeSelect></Field>
             <Field label="Theme"><NativeSelect value={s.theme} onChange={(e) => setS({ theme: e.target.value as "light" | "dark" })}><option value="light">Light</option><option value="dark">Dark</option></NativeSelect></Field>
           </div>
         </Card>
 
-        <Card title="Notifications">
+        <Card title="Notifications (unavailable)">
+          <p className="text-sm text-muted-foreground">Email, push and booking reminders are not delivered in this release.</p>
           {([["notifyEmail", "Email notifications"], ["notifyPush", "Push notifications"], ["notifyBookings", "Booking updates & reminders"]] as const).map(([k, label]) => (
-            <label key={k} className="flex items-center justify-between"><span className="text-sm">{label}</span><Switch checked={s[k]} onCheckedChange={(v) => setS({ [k]: v })} /></label>
+            <label key={k} className="flex items-center justify-between"><span className="text-sm">{label}</span><Switch checked={false} disabled /></label>
           ))}
         </Card>
 
-        <Card title="Demo data">
-          <p className="text-sm text-muted-foreground">Everything is stored in this browser only. Reset to restore the sample data.</p>
-          <Button variant="destructive" onClick={() => { app.reset(); toast("Demo data reset"); }}>Reset demo data</Button>
-        </Card>
       </Section>
     </div>
   );

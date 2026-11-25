@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,5 +45,16 @@ test("inconsistent pagination and invalid or duplicate stations prevent deactiva
     assert.notEqual(result.status, 0, scenario);
     assert.match(result.stderr, /NREL import incomplete/, scenario);
     assert.doesNotMatch(result.stderr, /AssertionError/, scenario);
+  }
+});
+
+test("the scheduled refresh runs the guarded NREL importer with repository secrets", () => {
+  const workflow = readFileSync(fileURLToPath(new URL("../.github/workflows/nrel-refresh.yml", import.meta.url)), "utf8");
+  assert.match(workflow, /schedule:/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /concurrency:\s*\n\s*group: nrel-catalog-refresh\s*\n\s*cancel-in-progress: false/);
+  assert.match(workflow, /npm run import:nrel/);
+  for (const secret of ["NREL_API_KEY", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    assert.ok(workflow.includes(secret + ": ${{ secrets." + secret + " }}"));
   }
 });

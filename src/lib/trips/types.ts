@@ -44,6 +44,13 @@ export interface TripStop {
   source: "nrel" | "peer";
 }
 
+export interface TripLeg {
+  departureSocPercent: number;
+  arrivalSocPercent: number;
+  distanceMiles: number;
+  driveMinutes: number;
+}
+
 export interface PlannedTrip {
   outcome: TripOutcome;
   objective: TripObjective;
@@ -53,6 +60,7 @@ export interface PlannedTrip {
   chargeMinutes?: number;
   estimatedCost?: number | null;
   stops: TripStop[];
+  legs: TripLeg[];
   warnings: string[];
   assumptions: string[];
   dataFreshness: string | null;

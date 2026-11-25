@@ -24,6 +24,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof PayloadTooLargeError) return Response.json({ error: error.message, code: "PAYLOAD_TOO_LARGE" }, { status: 413 });
     if (error instanceof RoutingLocationError) return Response.json({ outcome: "invalid_location", error: error.message, code: `ROUTING_${error.code}` }, { status: 422 });
     const message = error instanceof Error ? error.message : "TRIP_UNAVAILABLE";
-    return Response.json({ outcome: "provider_unavailable", error: "Routing is unavailable. Configure the self-hosted Valhalla service and charger catalog.", code: message }, { status: 503 });
+    return Response.json({ outcome: "provider_unavailable", error: "Routing or charger data is unavailable. Please try again later.", code: message }, { status: 503 });
   }
 }

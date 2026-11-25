@@ -8,7 +8,7 @@ const deactivated = new Set();
 process.on("exit", () => assert.equal(deactivated.size, complete ? 1001 : 0, "Only complete imports may deactivate missing stations, including later pages"));
 globalThis.fetch = async (input, options) => {
   const url = new URL(input instanceof Request ? input.url : String(input));
-  if (url.hostname === "developer.nrel.gov") {
+  if (url.hostname === "developer.nlr.gov") {
     assert.equal(url.searchParams.get("api_key"), "test-nrel-key");
     const station = (id) => ({ id, station_name: " Test station ", latitude: 42, longitude: -71, status_code: "E", ev_dc_fast_num: 1 });
     const offset = Number(url.searchParams.get("offset"));

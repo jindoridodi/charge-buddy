@@ -4,6 +4,7 @@ export const CURRENT_REPORT_DAYS = 30;
 export const PUBLIC_PRICE_REPORT_COLUMNS = "id,charger_id,price_per_kwh,observed_at,note,state,created_at";
 
 export function catalogPriceSummary(charger: CatalogCharger): PriceSummary {
+  if (charger.source === "peer" && charger.host_price_per_kwh != null) return { status: "host", price_per_kwh: Number(charger.host_price_per_kwh), observed_at: null };
   return charger.community_price_per_kwh != null && charger.community_price_observed_at != null
     ? { status: "community", price_per_kwh: Number(charger.community_price_per_kwh), observed_at: charger.community_price_observed_at }
     : { status: "unknown", price_per_kwh: null, observed_at: null };

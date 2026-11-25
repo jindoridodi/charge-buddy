@@ -1,5 +1,7 @@
 # Supabase and NREL setup
 
+For database-backed Peer listing publication and reservation setup/current verification, see [Shared listings and reservations](SHARED_LISTINGS_RESERVATIONS.md).
+
 1. Create a free Supabase project, then copy its project URL and anon key to `.env.local` from `.env.example`.
 2. In Supabase SQL Editor, run the migrations in [`supabase/migrations`](../supabase/migrations) in filename order.
 3. Enable Email authentication in **Authentication → Providers → Email**. For local demonstrations, disable email confirmation if immediate sign-in is preferred.
@@ -15,7 +17,9 @@ The importer requests active (`status=E`) public US electric stations in pages, 
 
 The command loads `.env.local` using Next.js environment loading and the same normalizer exercised by catalog tests. An operational station has **unknown live availability**; operational status does not establish occupancy or access at departure time.
 
-Before deactivating missing records, the importer requires complete page arrays, a consistent `total_results`, expected page lengths, matching offsets when returned, valid normalized station identities, and exactly the reported number of unique IDs. This uses the provider's documented [station count and pagination contract](https://developer.nlr.gov/docs/transportation/alt-fuel-stations-v1/all/#response-fields). Failed runs may have upserted earlier valid pages but do not reconcile missing records; resolve the failure and rerun. Run one import at a time. These guards do not provide a transactional provider snapshot.
+Before deactivating missing records, the importer requires complete page arrays, a consistent `total_results`, expected page lengths, matching offsets when returned, valid normalized station identities, and exactly the reported number of unique IDs. This uses the provider's documented [station count and pagination contract](https://developer.nlr.gov/docs/transportation/alt-fuel-stations-v1/all/#response-fields). Failed runs may have upserted earlier valid pages but do not reconcile missing records; resolve the failure and rerun. These guards do not provide a transactional provider snapshot.
+
+Use the **Refresh NREL catalog** workflow's manual dispatch for shared databases; scheduled and manually dispatched workflow runs share a concurrency group. GitHub may replace an existing pending run when another run is queued. The CLI does not participate in that group: before running it against a shared database, disable the workflow, wait for all running imports to finish, and coordinate with other operators so no other CLI import starts. Re-enable the workflow after the CLI import finishes. Use a separate database for local testing.
 
 To make an administrator, set `app_metadata.role` to `admin` for that Supabase Auth user. Administrators can restore a reviewed report (`state: "visible"`) or remove it (`state: "removed"`) through `PATCH /api/price-reports/:id`.
 
@@ -28,7 +32,7 @@ Apply `202611010002_admin_price_report_visibility.sql` after earlier migrations 
 - A report reaches `needs_review` after three flags from distinct users. It remains visible in report history, but is excluded from rankings.
 - Apply `202611010001_serialize_report_flags.sql` after the earlier migrations. It locks each report before counting flags so concurrent submissions cannot miss that threshold; existing ownership policies and public report grants stay unchanged.
 - Chargers without a current community report display **Price unknown** in ordinary discovery and are excluded from electricity-price-ranked results before pagination.
-- Peer-hosted listing prices remain authoritative in local listing records.
+- Peer-hosted listing prices are authoritative in the database-backed public projection.
 
 ## Price-report permission repair
 
@@ -42,12 +46,12 @@ Apply `202610280002_corridor_segments.sql` and `202610280003_catalog_search.sql`
 
 Then apply `202610280004_utc_price_freshness.sql` so catalog price freshness uses UTC observation dates even when a database connection changes its session time zone.
 
-Discovery starts nationwide. Set a U.S. location to apply a clearly labeled straight-line radius, use the separate text filter to narrow results, and load subsequent pages as needed. Local demo listings remain browser-only and appear separately; shared Peer listing persistence remains future work.
+Discovery starts nationwide. Set a U.S. location to apply a clearly labeled straight-line radius, use the separate text filter to narrow results, and load subsequent pages as needed. Published Peer listings are stored in Supabase and appear in the shared public catalog after the Peer listing migrations are applied.
 
 Import reconciliation and trip corridor reads page through all records in stable ID order. Trip pricing reads the current-price view in batches of 50 station IDs; a failed price read returns a service failure rather than an infeasible plan. Deactivated imported stations return not found from the public detail API.
 
 Trip search evaluates at most 10,000 corridor records and 50 compatible candidates, 3,000 states, 10,000 transitions, and 2,000 queued states. Hitting a limit returns `search_bounds_reached` rather than claiming infeasibility. These bounds appear in the result assumptions. Import reconciliation continues through every page because it is an administrative task, outside the public trip request.
 
-Trip mileage includes estimated out-and-back charging detours. Additional detour driving time assumes 55 mph; the map still shows the original road corridor. Location/no-route rejections use HTTP 422 with `invalid_location`; other routing failures use HTTP 503. The adapter recognizes the location codes documented in [Valhalla's error definitions](https://github.com/valhalla/valhalla/blob/master/src/exceptions.cc).
+Selected charging stops are routed together through the road provider; the resulting route and legs include those stops. The planner checks road access and battery reserve, with bounded retries, but candidate selection uses approximate corridor estimates and is not guaranteed optimal. It cannot verify charger entrance access or live availability; travel between requested and snapped points is not included. Location/no-route rejections use HTTP 422 with `invalid_location`; other routing failures use HTTP 503. The adapter recognizes the location codes documented in [Valhalla's error definitions](https://github.com/valhalla/valhalla/blob/master/src/exceptions.cc).
 
 Charger detail returns 404 for missing or deactivated records and 503 for catalog failures. The UI distinguishes loading and not-found states from retryable failures. Successful price reports and flags reload the detail response so its displayed price uses the server's current-report selection.

@@ -10,7 +10,7 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!nrelKey || !url || !serviceKey) throw new Error("NREL_API_KEY, NEXT_PUBLIC_SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY are required.");
 
 const supabase = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
-const endpoint = "https://developer.nrel.gov/api/alt-fuel-stations/v1.json";
+const endpoint = "https://developer.nlr.gov/api/alt-fuel-stations/v1.json";
 const limit = 200;
 let offset = 0;
 let imported = 0;

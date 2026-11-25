@@ -1,5 +1,9 @@
 # Self-hosted routing services
 
+## Hosted Stadia Maps option
+
+For a hosted setup, create a Stadia Maps property and API key at https://client.stadiamaps.com/ and add `STADIA_MAPS_API_KEY` to the server's `.env.local`. Restart the application after changing the environment. The key is sent in an authorization header by the server and must not use a `NEXT_PUBLIC_` prefix. Stadia takes precedence over the self-hosted URLs below when the key is set. Use an appropriate Stadia plan and observe its attribution and usage terms. Charger stops still depend on the Supabase catalog and its NREL import.
+
 ChargeBuddy includes a Docker Compose stack for Valhalla and Nominatim. Both APIs bind to `127.0.0.1` by default, so they are available to the application server on the VM but are not public internet services.
 
 ## Start the stack
@@ -15,7 +19,7 @@ docker compose --env-file .env up -d
 docker compose logs -f valhalla nominatim
 ```
 
-The first boot downloads the chosen OSM PBF and imports/builds data. Do not restart or delete the named volumes while that work is running. Start with the California URL in `.env.example`; replacing it with the U.S. extract is a new, much larger import and needs VM capacity planning.
+The first boot downloads the U.S. OSM extract, including Alaska and Hawaii, and imports/builds data. Do not restart or delete the named volumes while that work is running. Size the VM for the national import before starting. Changing an extract requires a fresh staged import; changing the URL alone does not replace existing named-volume data.
 
 ## Validate and connect ChargeBuddy
 
@@ -48,7 +52,7 @@ Use a VM with SSD-backed persistent volumes for map data and separate memory lim
 ## Operations
 
 1. Download licensed U.S. OSM extracts and build the service-specific indexes in a staging volume.
-2. Health-check geocoding and a representative route through both services.
+2. Health-check geocoding and routes within the contiguous states, Alaska, and Hawaii. Verify a long connected route and that disconnected locations return no route. The U.S.-only extract does not include Canadian roads, so routes requiring travel through Canada are outside its coverage.
 3. Set `VALHALLA_URL` and `NOMINATIM_URL` only in the Next.js server environment.
 4. Run `npm run import:nrel` on a scheduled worker after the catalog migration.
 5. Monitor provider latency/error rates and catalog import freshness. Do not advertise live traffic, weather, availability, or prices.

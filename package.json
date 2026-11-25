@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node scripts/smoke-test.mjs",
-    "test:unit": "tsx --import ./scripts/test-setup.mjs --test tests/*.test.ts",
+    "test:unit": "node scripts/run-unit-tests.mjs",
     "test:ui": "node --test tests/browser/*.test.mjs",
     "test:catalog": "tsx --import ./scripts/test-setup.mjs --test tests/catalog.test.ts",
     "test:account-state": "tsx --import ./scripts/test-setup.mjs --test tests/account-state.test.ts",
@@ -17,7 +17,8 @@
     "test:reports:db": "node scripts/test-price-reports-db.mjs",
     "test:rate-limit": "tsx --import ./scripts/test-setup.mjs --test tests/rate-limit.test.ts",
     "test:trip": "tsx --import ./scripts/test-setup.mjs --test tests/trip-planner.test.ts",
-    "import:nrel": "node scripts/import-nrel.mjs"
+    "import:nrel": "node scripts/import-nrel.mjs",
+    "verify:shared-listings": "node --import tsx --import ./scripts/test-setup.mjs scripts/verify-shared-listings.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -57,7 +58,7 @@
     "input-otp": "^1.4.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.575.0",
-    "next": "^16.4.1",
+    "next": "^16.4.6",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
@@ -69,7 +70,7 @@
     "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
