@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { normalizeNrelStation } from "../src/lib/catalog/nrel.ts";
 
@@ -18,7 +19,7 @@ let expectedTotal = null;
 const importedSourceIds = new Set();
 
 while (true) {
-  const params = new URLSearchParams({ api_key: nrelKey, fuel_type: "ELEC", access: "public", status: "E", country: "US", limit: String(limit), offset: String(offset) });
+  const params = new URLSearchParams({ api_key: nrelKey, fuel_type: "ELEC", access: "public", status: "E", country: "US", limit: String(limit), offset: String(offset), _cb: randomUUID() });
   const response = await fetch(`${endpoint}?${params}`);
   if (!response.ok) throw new Error(`NREL request failed: ${response.status} ${await response.text()}`);
   const payload = await response.json();
