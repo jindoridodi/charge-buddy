@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { catalogQuote } from "../src/lib/quote";
+import { suggestPrice } from "../src/lib/data";
 import type { CatalogCharger } from "../src/lib/catalog/types";
 
 const station = { latitude: 37, longitude: -122, price_summary: { status: "host", price_per_kwh: 0.25, observed_at: null }, hostFee: 2 } as unknown as CatalogCharger;
+
+test("host suggestion uses the saved margin with a five-cent minimum", () => {
+  assert.equal(suggestPrice(0.4, 25).suggested, 0.5);
+  assert.equal(suggestPrice(0.1, 10).suggested, 0.15);
+  assert.equal(suggestPrice(0.25).suggested, 0.35);
+  assert.equal(suggestPrice(0.15, 50).suggested, 0.23);
+});
 
 test("quote itemization uses the same origin, energy and vehicle efficiency as the total", () => {
   const quote = catalogQuote(station, { lat: 37.1, lng: -122 }, 20, 4);

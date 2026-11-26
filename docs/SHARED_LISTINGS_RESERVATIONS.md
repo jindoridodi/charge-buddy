@@ -13,6 +13,8 @@ Verified November 17, 2026 on the local `release-completion` branch. All GitHub 
 
 Reservations book time only. No payments, payouts, email notifications, host approvals, hardware control or charging guarantees are implemented. Reservation costs are snapshots of the current host electricity price times the requested kWh; driver travel estimates are not charged. Exact addresses remain private, including in reservation rows.
 
+Hosts may enter their electricity rate to suggest a listing price. The suggestion is the larger of the rate plus the saved default host markup or the rate plus $0.05/kWh, rounded to cents. Entering a valid rate fills the listing price; the host may override it, and the app saves the price shown in the price field. An existing listing's price stays unchanged until the host edits it. Suggestions of $10/kWh or more exceed the supported listing price and require a valid manual price.
+
 Existing browser-only demo listings are not automatically claimed by an authenticated account. Recreate/publish them once through the database-backed listing form.
 
 ## Database rules

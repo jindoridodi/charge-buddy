@@ -73,7 +73,7 @@ export default function Page() {
             ))}
           </div>
           <Field label={`Default search radius: ${s.maxDistance} mi`}><Slider min={1} max={30} value={[s.maxDistance]} onValueChange={([v]) => setS({ maxDistance: v ?? 15 })} /></Field>
-          <Field label={`Default host margin: ${s.defaultMargin}%`}><Slider min={0} max={100} step={5} value={[s.defaultMargin]} onValueChange={([v]) => setS({ defaultMargin: v ?? 40 })} /></Field>
+          <Field label={`Default host markup: ${s.defaultMargin}%`}><Slider min={0} max={100} step={5} value={[s.defaultMargin]} onValueChange={([v]) => setS({ defaultMargin: v ?? 40 })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Units" hint="Distance conversion is unavailable; estimates use miles."><NativeSelect value="mi" disabled><option value="mi">Miles</option></NativeSelect></Field>
             <Field label="Theme"><NativeSelect value={s.theme} onChange={(e) => setS({ theme: e.target.value as "light" | "dark" })}><option value="light">Light</option><option value="dark">Dark</option></NativeSelect></Field>
