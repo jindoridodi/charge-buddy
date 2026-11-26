@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader, Section, Field, NativeSelect } from "@/components/PageHeader";
 import { useApp } from "@/lib/store";
-import { CONNECTORS } from "@/lib/data";
+import { CONNECTORS, suggestPrice } from "@/lib/data";
 import { listingsRequest, type PeerListing } from "@/lib/client/listings";
 
 const blank: PeerListing = { id: "", name: "", address: "", area: "", connector: "J1772", power_kw: 7.2, price: 0.3, published: true };
@@ -18,7 +18,10 @@ export default function Page() {
 
 function ListingEditor() {
   const router = useRouter();
+  const { accountReady, settings } = useApp();
   const [listing, setListing] = useState(blank);
+  const [homeRate, setHomeRate] = useState("");
+  const [priceOverrideRequired, setPriceOverrideRequired] = useState(false);
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [locating, setLocating] = useState(false);
@@ -38,8 +41,21 @@ function ListingEditor() {
       .finally(() => setLoading(false));
   }, []);
   const update = (patch: Partial<PeerListing>) => setListing((current) => ({ ...current, ...patch }));
+  const rate = Number(homeRate);
+  const suggestion = homeRate !== "" && Number.isFinite(rate) && rate >= 0 && rate <= 9.99 ? suggestPrice(rate, settings.defaultMargin).suggested : null;
+  function updateHomeRate(value: string) {
+    setHomeRate(value);
+    const amount = Number(value);
+    if (value === "") { setPriceOverrideRequired(false); return; }
+    if (!Number.isFinite(amount) || amount < 0 || amount > 9.99) return;
+    const price = suggestPrice(amount, settings.defaultMargin).suggested;
+    setPriceOverrideRequired(price >= 10);
+    if (price < 10) update({ price });
+  }
   async function submit(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault();
+    if (priceOverrideRequired) { setError("Enter a listing price below $10/kWh before saving."); return; }
+    setBusy(true); setError("");
     try {
       await listingsRequest(listing.id ? "PATCH" : "POST", { ...listing, ...(latitude && longitude ? { approximateLocation: { lat: Number(latitude), lng: Number(longitude) } } : {}) });
       toast.success("Listing saved."); router.push("/dashboard?host=1");
@@ -47,7 +63,7 @@ function ListingEditor() {
     finally { setBusy(false); }
   }
   return <div><PageHeader title={listing.id ? "Edit listing" : "List Your Charger"} subtitle="Share your charger with other drivers." /><Section className="max-w-3xl">
-    {loading ? <p>Loading listing…</p> : <form onSubmit={submit} className="space-y-4 rounded-2xl border bg-card p-6">
+    {loading || !accountReady ? <p>Loading listing…</p> : <form onSubmit={submit} className="space-y-4 rounded-2xl border bg-card p-6">
       <Field label="Listing name"><Input required maxLength={100} value={listing.name} onChange={(e) => update({ name: e.target.value })} /></Field>
       <Field label="Street address" hint="Your exact address is private and is never shown in the public catalog."><Input required maxLength={200} value={listing.address} onChange={(e) => update({ address: e.target.value })} /></Field>
       <Field label="City and state" hint="Enter a city and two-letter state, for example Boston, MA. This area is public."><Input required maxLength={100} value={listing.area} onChange={(e) => update({ area: e.target.value })} /></Field>
@@ -62,7 +78,9 @@ function ListingEditor() {
       </fieldset>
       <Field label="Connector"><NativeSelect value={listing.connector} onChange={(e) => update({ connector: e.target.value })}>{CONNECTORS.map((c) => <option key={c}>{c}</option>)}</NativeSelect></Field>
       <Field label="Power (kW)"><Input required type="number" min="0.01" max="1000" step="any" value={listing.power_kw} onChange={(e) => update({ power_kw: Number(e.target.value) })} /></Field>
-      <Field label="Price ($/kWh)"><Input required type="number" min="0.01" max="9.99" step="0.01" value={listing.price} onChange={(e) => update({ price: Number(e.target.value) })} /></Field>
+      <Field label="Electricity rate ($/kWh)" hint={`Optional. Uses your ${settings.defaultMargin}% host markup or at least $0.05 above your electricity rate; you can override the listing price.`}><Input type="number" min="0" max="9.99" step="0.01" value={homeRate} onChange={(e) => updateHomeRate(e.target.value)} /></Field>
+      {suggestion != null && <p className="text-sm text-muted-foreground">Suggested: ${suggestion.toFixed(2)}/kWh{suggestion >= 10 && " (above the supported listing price; enter a price below $10)"}</p>}
+      <Field label="Price ($/kWh)"><Input required type="number" min="0.01" max="9.99" step="0.01" value={listing.price} onChange={(e) => { setPriceOverrideRequired(false); update({ price: Number(e.target.value) }); }} /></Field>
       {error && <p role="alert" className="text-destructive">{error}</p>}
       <Button disabled={busy}>{busy ? "Saving…" : "Save listing"}</Button>
     </form>}

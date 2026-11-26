@@ -524,7 +524,11 @@ test("a published listing is discoverable and reservable in a separate signed-in
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url()), method = route.request().method();
       if (url.origin !== origin) return route.abort();
-      if (url.pathname === "/api/account") return route.fulfill({ json: { revision: 0, favorites: [], vehicles: [], defaultVehicleId: null, settings: null } });
+      if (url.pathname === "/api/account") {
+        if (userId === hostId) await new Promise((resolve) => setTimeout(resolve, 700));
+        const settings = userId === hostId ? { connectors: ["CCS"], maxDistance: 15, units: "mi", notifyEmail: false, notifyPush: false, notifyBookings: false, defaultMargin: 50, theme: "light" } : null;
+        return route.fulfill({ json: { revision: 0, favorites: [], vehicles: [], defaultVehicleId: null, settings } });
+      }
       if (url.pathname === "/api/listings") {
         if (method === "GET") return route.fulfill({ json: { listings: userId === hostId && listing ? [listing] : [] } });
         listing = { ...route.request().postDataJSON(), id: listingId };
@@ -555,11 +559,25 @@ test("a published listing is discoverable and reservable in a separate signed-in
   await host.getByLabel("Street address", { exact: false }).fill("123 Private Street");
   await host.getByLabel("City and state", { exact: false }).fill("Boston, MA");
   await host.getByRole("combobox").selectOption("CCS");
-  await host.getByLabel("Price ($/kWh)").fill("0.4");
   await host.getByLabel("Map latitude", { exact: true }).fill("42.4");
   await host.getByLabel("Map longitude", { exact: true }).fill("-71.1");
+  await host.getByLabel("Electricity rate ($/kWh)").fill("9.99");
+  await host.getByRole("button", { name: "Save listing", exact: true }).click();
+  await host.getByRole("alert").getByText("Enter a listing price below $10/kWh before saving.").waitFor();
+  assert.equal(listing, null, "Unsupported suggestions require an explicit price");
+  await host.getByLabel("Electricity rate ($/kWh)").fill("0.25");
+  assert.equal(await host.getByLabel("Price ($/kWh)").inputValue(), "0.38");
+  await host.getByText(/Uses your 50% host markup/).waitFor();
+  await host.getByText("Suggested: $0.38/kWh", { exact: false }).waitFor();
   await host.getByRole("button", { name: "Save listing", exact: true }).click();
   await host.getByText("Persisted peer charger", { exact: true }).waitFor();
+  assert.equal(listing.price, 0.38, "The suggested price uses the saved margin and is saved");
+  await host.getByRole("link", { name: "Edit", exact: true }).click();
+  assert.equal(await host.getByLabel("Price ($/kWh)").inputValue(), "0.38");
+  await host.getByLabel("Price ($/kWh)").fill("0.4");
+  await host.getByRole("button", { name: "Save listing", exact: true }).click();
+  await host.getByText("Persisted peer charger", { exact: true }).waitFor();
+  assert.equal(listing.price, 0.4, "The host's explicit override is saved");
   await driver.goto(`${origin}/chargers`);
   await driver.getByRole("button", { name: /driver/i }).waitFor();
   await driver.getByRole("heading", { name: "Persisted peer charger", exact: true }).click();

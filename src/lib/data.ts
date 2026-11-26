@@ -154,10 +154,11 @@ export function estimateCost(
   return { electricity, hostFee: charger.hostFee, travel, total, distance };
 }
 
-/** Suggested host listing price: electricity cost plus 40% margin, min +$0.05. */
-export function suggestPrice(homeRate: number) {
-  const suggested = Math.max(homeRate * 1.4, homeRate + 0.05);
-  return { suggested: Math.round(suggested * 100) / 100, profit: Math.round((suggested - homeRate) * 100) / 100 };
+/** Suggested host listing price: electricity cost plus markup, min +$0.05. */
+export function suggestPrice(homeRate: number, marginPercent = 40) {
+  const cents = Math.round(homeRate * 100);
+  const suggestedCents = Math.max(Math.round(cents * (100 + marginPercent) / 100 + 1e-9), cents + 5);
+  return { suggested: suggestedCents / 100, profit: (suggestedCents - cents) / 100 };
 }
 
 export const money = (n: number) => `$${n.toFixed(2)}`;
